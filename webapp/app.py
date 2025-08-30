@@ -220,8 +220,10 @@ def save_user_data_to_json(user_id: int, count: int) -> None:
         logging.getLogger(__name__).error("Failed to save user data to JSON: %s", e)
 
 
+# Create app instance for WSGI servers like gunicorn
+app = create_app()
+
 if __name__ == "__main__":
-    app = create_app()
     app.run(host="127.0.0.1", port=8000, debug=True)
 
 
