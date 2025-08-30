@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(start_https.cmd)",
+      "Bash(cmd:*)",
+      "Bash(where ngrok)",
+      "Bash(curl:*)",
+      "WebFetch(domain:ngrok.com)",
+      "Bash(copy .env.example .env)",
+      "Bash(cp:*)",
+      "Bash(ngrok:*)",
+      "Bash(timeout:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

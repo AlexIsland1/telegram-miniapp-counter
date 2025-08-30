@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Счётчик кликов</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }
+      .wrap { max-width: 440px; margin: 0 auto; text-align: center; }
+      button { font-size: 20px; padding: 12px 18px; cursor: pointer; }
+      .count { font-size: 48px; margin: 24px 0; }
+      .row { margin: 12px 0; }
+      code { background: #f3f3f3; padding: 2px 6px; border-radius: 4px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Telegram Mini App — Счётчик</h1>
+      <div class="row">Пользователь: <span id="uid">неизвестен</span></div>
+      <div class="count" id="count">0</div>
+      <div class="row">
+        <button id="btn">Нажми меня</button>
+      </div>
+      <div class="row">
+        <button id="export-btn">Скачать JSON</button>
+      </div>
+      <div class="row" id="status"></div>
+      <p>
+        Вне Telegram укажите <code>?user_id=123</code> в адресной строке для теста.
+      </p>
+    </div>
+
+    <script>
+      const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+      if (tg) {
+        try { tg.expand(); } catch (e) {}
+      }
+
+      function qs(name) {
+        const url = new URL(window.location.href);
+        return url.searchParams.get(name);
+      }
+
+      const elements = {
+        uid: document.getElementById('uid'),
+        count: document.getElementById('count'),
+        btn: document.getElementById('btn'),
+        exportBtn: document.getElementById('export-btn'),
+        status: document.getElementById('status'),
+      };
+
+      const initData = tg ? tg.initData : null;
+      const initDataUnsafe = tg ? tg.initDataUnsafe : null;
+      const userIdFromTG = initDataUnsafe && initDataUnsafe.user ? initDataUnsafe.user.id : null;
+      const userIdFromQS = qs('user_id');
+
+      const ctx = {
+        initData,
+        user_id: userIdFromTG || userIdFromQS || 234195742,
+      };
+
+      elements.uid.textContent = ctx.user_id || 'неизвестен';
+
+      async function api(path) {
+        const res = await fetch(path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ initData: ctx.initData, user_id: ctx.user_id }),
+        });
+        return await res.json();
+      }
+
+      async function refresh() {
+        try {
+          const data = await api('/api/count');
+          if (data.ok) {
+            elements.count.textContent = data.count;
+            elements.status.textContent = '';
+          } else {
+            elements.status.textContent = 'Ошибка: ' + (data.error || 'неизвестно');
+          }
+        } catch (e) {
+          elements.status.textContent = 'Сеть: ' + e.message;
+        }
+      }
+
+      elements.btn.addEventListener('click', async () => {
+        elements.btn.disabled = true;
+        try {
+          const data = await api('/api/click');
+          if (data.ok) {
+            elements.count.textContent = data.count;
+          } else {
+            elements.status.textContent = 'Ошибка: ' + (data.error || 'неизвестно');
+          }
+        } catch (e) {
+          elements.status.textContent = 'Сеть: ' + e.message;
+        } finally {
+          elements.btn.disabled = false;
+        }
+      });
+
+      elements.exportBtn.addEventListener('click', async () => {
+        if (!ctx.user_id) {
+          elements.status.textContent = 'Ошибка: не найден user_id';
+          return;
+        }
+        
+        try {
+          const link = document.createElement('a');
+          link.href = `/api/export/${ctx.user_id}`;
+          link.download = `user_${ctx.user_id}_data.json`;
+          link.click();
+          elements.status.textContent = 'Файл скачан';
+        } catch (e) {
+          elements.status.textContent = 'Ошибка скачивания: ' + e.message;
+        }
+      });
+
+      refresh();
+    </script>
+  </body>
+  </html>
+
