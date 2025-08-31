@@ -18,6 +18,25 @@ DB_PATH = os.path.join(BASE_DIR, "counter.db")
 EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
 
 
+def setup_logging(app: Flask) -> None:
+    try:
+        logs_dir = os.path.join(os.path.dirname(BASE_DIR), "logs")
+        os.makedirs(logs_dir, exist_ok=True)
+        file_handler = RotatingFileHandler(os.path.join(logs_dir, 'flask.log'), maxBytes=2_000_000, backupCount=2, encoding='utf-8')
+        file_handler.setLevel(logging.INFO)
+        formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s')
+        file_handler.setFormatter(formatter)
+
+        app.logger.addHandler(file_handler)
+        logging.getLogger('werkzeug').addHandler(file_handler)
+        app.logger.setLevel(logging.INFO)
+        logging.getLogger('werkzeug').setLevel(logging.INFO)
+        app.logger.info('Flask logging configured')
+    except Exception:
+        # Fallback to default logging silently
+        pass
+
+
 def create_app() -> Flask:
     app = Flask(__name__, static_folder=os.path.join(BASE_DIR, "static"), static_url_path="")
 
@@ -225,25 +244,6 @@ app = create_app()
 
 if __name__ == "__main__":
     app.run(host="127.0.0.1", port=8000, debug=True)
-
-
-def setup_logging(app: Flask) -> None:
-    try:
-        logs_dir = os.path.join(os.path.dirname(BASE_DIR), "logs")
-        os.makedirs(logs_dir, exist_ok=True)
-        file_handler = RotatingFileHandler(os.path.join(logs_dir, 'flask.log'), maxBytes=2_000_000, backupCount=2, encoding='utf-8')
-        file_handler.setLevel(logging.INFO)
-        formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s')
-        file_handler.setFormatter(formatter)
-
-        app.logger.addHandler(file_handler)
-        logging.getLogger('werkzeug').addHandler(file_handler)
-        app.logger.setLevel(logging.INFO)
-        logging.getLogger('werkzeug').setLevel(logging.INFO)
-        app.logger.info('Flask logging configured')
-    except Exception:
-        # Fallback to default logging silently
-        pass
 
 
 def _safe_body():
