@@ -2,6 +2,7 @@ import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
 import os
+from datetime import datetime
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
@@ -133,6 +134,135 @@ async def main():
         except Exception as e:
             logging.exception("LOAD_WORDS error: %s", e)
             await message.answer("❌ Произошла ошибка при загрузке слов.")
+
+    @dp.message(Command("notifications"))
+    async def on_notifications(message: types.Message):
+        """Manage notification settings"""
+        try:
+            user_id = message.from_user.id
+            
+            # Get current settings
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"{APP_URL}/api/settings",
+                    json={"user_id": user_id},
+                    headers={"Content-Type": "application/json"}
+                ) as resp:
+                    if resp.status == 200:
+                        result = await resp.json()
+                        if result.get("ok"):
+                            settings = result["settings"]
+                            enabled = settings["notifications_enabled"]
+                            time_str = settings["study_reminder_time"]
+                            
+                            status = "✅ Включены" if enabled else "❌ Отключены"
+                            
+                            await message.answer(
+                                f"🔔 <b>Настройки уведомлений</b>\n\n"
+                                f"Статус: {status}\n"
+                                f"Время: {time_str}\n\n"
+                                f"Команды:\n"
+                                f"📅 <code>/set_time HH:MM</code> - изменить время\n"
+                                f"🔕 <code>/notifications_off</code> - отключить\n"
+                                f"🔔 <code>/notifications_on</code> - включить",
+                                parse_mode="HTML"
+                            )
+                        else:
+                            await message.answer("❌ Ошибка получения настроек")
+                    else:
+                        await message.answer("❌ Ошибка сервера")
+                        
+        except Exception as e:
+            logging.exception("NOTIFICATIONS error: %s", e)
+            await message.answer("❌ Произошла ошибка")
+
+    @dp.message(Command("set_time"))
+    async def on_set_time(message: types.Message):
+        """Set notification time"""
+        try:
+            # Parse time from command
+            args = message.text.split()
+            if len(args) < 2:
+                await message.answer(
+                    "⏰ Укажите время в формате HH:MM\n"
+                    "Пример: <code>/set_time 09:30</code>",
+                    parse_mode="HTML"
+                )
+                return
+            
+            time_str = args[1]
+            
+            # Validate time format
+            try:
+                datetime.strptime(time_str, '%H:%M')
+            except ValueError:
+                await message.answer("❌ Неверный формат времени. Используйте HH:MM (например: 09:30)")
+                return
+            
+            user_id = message.from_user.id
+            
+            # Update settings
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{APP_URL}/api/settings",
+                    json={
+                        "user_id": user_id,
+                        "study_reminder_time": time_str,
+                        "notifications_enabled": True
+                    },
+                    headers={"Content-Type": "application/json"}
+                ) as resp:
+                    if resp.status == 200:
+                        result = await resp.json()
+                        if result.get("ok"):
+                            await message.answer(f"✅ Время напоминаний установлено на {time_str}")
+                        else:
+                            await message.answer("❌ Ошибка обновления настроек")
+                    else:
+                        await message.answer("❌ Ошибка сервера")
+                        
+        except Exception as e:
+            logging.exception("SET_TIME error: %s", e)
+            await message.answer("❌ Произошла ошибка")
+
+    @dp.message(Command("notifications_on"))
+    async def on_notifications_on(message: types.Message):
+        """Enable notifications"""
+        await _toggle_notifications(message, True)
+
+    @dp.message(Command("notifications_off"))
+    async def on_notifications_off(message: types.Message):
+        """Disable notifications"""
+        await _toggle_notifications(message, False)
+
+    async def _toggle_notifications(message: types.Message, enabled: bool):
+        """Helper to toggle notifications"""
+        try:
+            user_id = message.from_user.id
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{APP_URL}/api/settings",
+                    json={
+                        "user_id": user_id,
+                        "notifications_enabled": enabled
+                    },
+                    headers={"Content-Type": "application/json"}
+                ) as resp:
+                    if resp.status == 200:
+                        result = await resp.json()
+                        if result.get("ok"):
+                            status = "включены" if enabled else "отключены"
+                            emoji = "🔔" if enabled else "🔕"
+                            await message.answer(f"{emoji} Уведомления {status}")
+                        else:
+                            await message.answer("❌ Ошибка обновления настроек")
+                    else:
+                        await message.answer("❌ Ошибка сервера")
+                        
+        except Exception as e:
+            logging.exception("TOGGLE_NOTIFICATIONS error: %s", e)
+            await message.answer("❌ Произошла ошибка")
 
     # Ensure polling works (remove webhook if previously set)
     try:

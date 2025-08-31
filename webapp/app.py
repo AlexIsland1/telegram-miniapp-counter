@@ -224,6 +224,80 @@ def create_app() -> Flask:
             app.logger.error("BULK_CREATE error user_id=%s: %s", user_id, e)
             return jsonify({"ok": False, "error": "server error"}), 500
 
+    @app.get("/api/settings")
+    def api_get_settings():
+        """Get user notification settings"""
+        user_id = extract_user_id_from_request()
+        if user_id is None:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+            
+        try:
+            with get_db_connection() as conn:
+                settings = conn.execute("""
+                    SELECT notifications_enabled, study_reminder_time, timezone 
+                    FROM user_settings WHERE user_id = ?
+                """, (user_id,)).fetchone()
+                
+                if settings:
+                    result = {
+                        "notifications_enabled": bool(settings["notifications_enabled"]),
+                        "study_reminder_time": settings["study_reminder_time"],
+                        "timezone": settings["timezone"]
+                    }
+                else:
+                    # Return default settings
+                    result = {
+                        "notifications_enabled": True,
+                        "study_reminder_time": "09:00",
+                        "timezone": "UTC"
+                    }
+                
+                app.logger.info("GET_SETTINGS user_id=%s", user_id)
+                return jsonify({"ok": True, "settings": result})
+                
+        except Exception as e:
+            app.logger.error("GET_SETTINGS error user_id=%s: %s", user_id, e)
+            return jsonify({"ok": False, "error": "server error"}), 500
+
+    @app.post("/api/settings")
+    def api_update_settings():
+        """Update user notification settings"""
+        user_id = extract_user_id_from_request()
+        if user_id is None:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+            
+        try:
+            data = request.get_json()
+            notifications_enabled = data.get("notifications_enabled", True)
+            study_reminder_time = data.get("study_reminder_time", "09:00")
+            timezone = data.get("timezone", "UTC")
+            
+            # Validate time format
+            try:
+                datetime.strptime(study_reminder_time, '%H:%M')
+            except ValueError:
+                return jsonify({"ok": False, "error": "Invalid time format. Use HH:MM"}), 400
+            
+            ensure_user_exists(user_id)
+            
+            with get_db_connection() as conn:
+                # Insert or update settings
+                conn.execute("""
+                    INSERT OR REPLACE INTO user_settings 
+                    (user_id, notifications_enabled, study_reminder_time, timezone)
+                    VALUES (?, ?, ?, ?)
+                """, (user_id, notifications_enabled, study_reminder_time, timezone))
+                
+                conn.commit()
+            
+            app.logger.info("UPDATE_SETTINGS user_id=%s enabled=%s time=%s", 
+                           user_id, notifications_enabled, study_reminder_time)
+            return jsonify({"ok": True, "message": "Settings updated"})
+            
+        except Exception as e:
+            app.logger.error("UPDATE_SETTINGS error user_id=%s: %s", user_id, e)
+            return jsonify({"ok": False, "error": "server error"}), 500
+
     return app
 
 
