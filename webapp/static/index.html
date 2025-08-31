@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Spaced Learning - Интервальное обучение</title>
+    <title>Spaced Learning - Интервальное обучение v2.0</title>
     <style>
       * { box-sizing: border-box; }
       
@@ -21,12 +21,13 @@
       .wrap {
         max-width: 360px;
         width: 100%;
-        background: rgba(255, 255, 255, 0.95);
+        background: rgba(255, 255, 255, 0.98);
         border-radius: 20px;
         padding: 2rem;
         text-align: center;
-        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
-        backdrop-filter: blur(10px);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(15px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
       }
       
       h1 {
@@ -36,21 +37,30 @@
         font-weight: 600;
       }
       
+      .section-title {
+        color: white;
+        margin: 0 0 1rem 0;
+        font-size: 1.1rem;
+        font-weight: 800;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+      }
+      
       .subtitle {
-        color: rgba(255, 255, 255, 0.8);
+        color: #666;
         font-size: 0.9rem;
         margin: 0 0 2rem 0;
         font-weight: 400;
       }
       
       .user-info {
-        background: rgba(255, 255, 255, 0.15);
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
         border-radius: 12px;
         padding: 0.75rem;
         margin: 1.5rem 0;
-        color: rgba(255, 255, 255, 0.9);
-        font-weight: 500;
+        color: #4338ca;
+        font-weight: 600;
         backdrop-filter: blur(10px);
+        border: 1px solid rgba(99, 102, 241, 0.2);
       }
       
       .stats-preview {
@@ -61,24 +71,25 @@
       }
       
       .stat-item {
-        background: rgba(255, 255, 255, 0.15);
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.8) 0%, rgba(139, 92, 246, 0.8) 100%);
         border-radius: 16px;
         padding: 1.25rem 0.75rem;
         text-align: center;
         backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 8px 25px rgba(99, 102, 241, 0.2);
       }
       
       .stat-number {
         font-size: 2rem;
         font-weight: 700;
         color: white;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
       }
       
       .stat-label {
         font-size: 0.75rem;
-        color: rgba(255, 255, 255, 0.8);
+        color: rgba(255, 255, 255, 0.95);
         margin-top: 0.25rem;
         font-weight: 500;
       }
@@ -155,10 +166,11 @@
         justify-content: space-around;
         margin: 2rem 0;
         padding: 1.5rem;
-        background: rgba(255, 255, 255, 0.1);
+        background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(236, 72, 153, 0.15) 100%);
         border-radius: 16px;
         backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.2);
+        border: 1px solid rgba(139, 92, 246, 0.25);
+        box-shadow: 0 4px 15px rgba(139, 92, 246, 0.1);
       }
       
       .feature {
@@ -169,12 +181,134 @@
       .feature-icon {
         font-size: 1.5rem;
         margin-bottom: 0.5rem;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
       }
       
       .feature-text {
         font-size: 0.75rem;
-        color: rgba(255, 255, 255, 0.8);
-        font-weight: 500;
+        color: white;
+        font-weight: 700;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+      }
+      
+      .achievements-section {
+        margin: 2rem 0;
+        padding: 1.5rem;
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+        border-radius: 16px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(99, 102, 241, 0.3);
+        box-shadow: 0 8px 25px rgba(99, 102, 241, 0.15);
+      }
+      
+      .achievement-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+      }
+      
+      .achievement-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 1rem;
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.6) 0%, rgba(139, 92, 246, 0.6) 100%);
+        border-radius: 12px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 4px 15px rgba(99, 102, 241, 0.2);
+      }
+      
+      .achievement-icon {
+        font-size: 1.5rem;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      }
+      
+      .achievement-text {
+        flex: 1;
+      }
+      
+      .achievement-number {
+        font-size: 1.25rem;
+        font-weight: 700;
+        color: white;
+        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+        line-height: 1.2;
+      }
+      
+      .achievement-label {
+        font-size: 0.7rem;
+        color: rgba(255, 255, 255, 1);
+        font-weight: 600;
+        margin-top: 0.1rem;
+        text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+      }
+      
+      .motivation-section {
+        margin: 2rem 0;
+        padding: 1.5rem;
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(5, 150, 105, 0.15) 100%);
+        border-radius: 16px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        text-align: center;
+        box-shadow: 0 8px 25px rgba(16, 185, 129, 0.1);
+      }
+      
+      .motivation-message {
+        font-size: 1rem;
+        color: #065f46;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+        text-shadow: 0 1px 3px rgba(255, 255, 255, 0.5);
+      }
+      
+      .badges-section {
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+      }
+      
+      .badge {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 1rem;
+        border-radius: 12px;
+        transition: all 0.3s ease;
+        min-width: 60px;
+      }
+      
+      .badge.locked {
+        background: rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(0, 0, 0, 0.2);
+        opacity: 0.6;
+      }
+      
+      .badge.unlocked {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+        transform: scale(1.05);
+      }
+      
+      .badge-icon {
+        font-size: 1.5rem;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      }
+      
+      .badge-name {
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: #374151;
+        text-align: center;
+      }
+      
+      .badge.unlocked .badge-name {
+        color: white;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
       }
       
       .status {
@@ -196,10 +330,11 @@
       }
       
       .help-text {
-        color: #888;
+        color: #6b7280;
         font-size: 0.8rem;
         margin-top: 1.5rem;
-        opacity: 0.8;
+        opacity: 0.9;
+        font-weight: 500;
       }
       
       code {
@@ -216,6 +351,11 @@
         .features { flex-direction: column; gap: 1rem; text-align: center; }
         .action-buttons { gap: 0.75rem; }
         .btn { padding: 1rem 1.5rem; font-size: 0.9rem; }
+        .achievement-grid { grid-template-columns: 1fr; gap: 0.75rem; }
+        .achievement-item { padding: 0.75rem; }
+        .achievement-number { font-size: 1.1rem; }
+        .badges-section { gap: 0.75rem; }
+        .badge { min-width: 55px; padding: 0.75rem; }
       }
     </style>
   </head>
@@ -240,6 +380,44 @@
         <div class="stat-item">
           <div class="stat-number" id="new-cards">-</div>
           <div class="stat-label">Новых</div>
+        </div>
+      </div>
+
+      <div class="achievements-section" id="achievements-section" style="display:none;">
+        <h3 class="section-title">🏆 Достижения</h3>
+        
+        <div class="achievement-grid">
+          <div class="achievement-item">
+            <div class="achievement-icon">🔥</div>
+            <div class="achievement-text">
+              <div class="achievement-number" id="current-streak">0</div>
+              <div class="achievement-label">дней подряд</div>
+            </div>
+          </div>
+          
+          <div class="achievement-item">
+            <div class="achievement-icon">✅</div>
+            <div class="achievement-text">
+              <div class="achievement-number" id="mastered-cards">0</div>
+              <div class="achievement-label">изучено</div>
+            </div>
+          </div>
+          
+          <div class="achievement-item">
+            <div class="achievement-icon">📊</div>
+            <div class="achievement-text">
+              <div class="achievement-number" id="avg-quality">0%</div>
+              <div class="achievement-label">точность</div>
+            </div>
+          </div>
+          
+          <div class="achievement-item">
+            <div class="achievement-icon">⭐</div>
+            <div class="achievement-text">
+              <div class="achievement-number" id="weekly-progress">0%</div>
+              <div class="achievement-label">прогресс недели</div>
+            </div>
+          </div>
         </div>
       </div>
       
@@ -277,6 +455,31 @@
       
       <div class="status" id="status"></div>
       
+      <div class="motivation-section" id="motivation-section" style="display:none;">
+        <div class="motivation-message" id="motivation-message">
+          🚀 Начните свой путь к изучению!
+        </div>
+        
+        <div class="badges-section" id="badges-section">
+          <div class="badge locked" id="first-card-badge">
+            <span class="badge-icon">📝</span>
+            <span class="badge-name">Первые шаги</span>
+          </div>
+          <div class="badge locked" id="streak-7-badge">
+            <span class="badge-icon">🔥</span>
+            <span class="badge-name">Неделя</span>
+          </div>
+          <div class="badge locked" id="mastered-10-badge">
+            <span class="badge-icon">⭐</span>
+            <span class="badge-name">Знаток</span>
+          </div>
+          <div class="badge locked" id="perfect-day-badge">
+            <span class="badge-icon">💯</span>
+            <span class="badge-name">Отличник</span>
+          </div>
+        </div>
+      </div>
+
       <div class="help-text">
         Изучайте эффективнее с научно обоснованными интервалами повторения
       </div>
@@ -337,21 +540,115 @@
         }
       }
 
-      async function loadStats() {
+      async function initUserAndLoadDashboard() {
         try {
-          const response = await api('/api/stats');
+          // Prepare user profile data from Telegram
+          const profileData = {
+            username: initDataUnsafe?.user?.username,
+            first_name: initDataUnsafe?.user?.first_name
+          };
+          
+          const response = await api('/api/user/init', 'POST', profileData);
           if (response.ok) {
-            const stats = response.stats;
-            document.getElementById('total-cards').textContent = stats.total_cards;
-            document.getElementById('due-today').textContent = stats.due_today;
-            document.getElementById('new-cards').textContent = stats.new_cards;
+            const dashboard = response.dashboard;
+            
+            // Basic stats
+            document.getElementById('total-cards').textContent = dashboard.total_cards;
+            document.getElementById('due-today').textContent = dashboard.due_today;
+            document.getElementById('new-cards').textContent = dashboard.new_cards;
+            
+            // Achievement stats
+            if (dashboard.total_cards > 0) {
+              document.getElementById('current-streak').textContent = dashboard.current_streak;
+              document.getElementById('mastered-cards').textContent = dashboard.mastered_cards;
+              document.getElementById('avg-quality').textContent = `${Math.round(dashboard.avg_quality * 100)}%`;
+              document.getElementById('weekly-progress').textContent = `${Math.round(dashboard.weekly_progress)}%`;
+              
+              // Show achievements section if user has cards
+              document.getElementById('achievements-section').style.display = 'block';
+            }
+            
+            // Update motivation system
+            updateMotivationSystem(dashboard);
           } else {
+            // Default values for new users
             document.getElementById('total-cards').textContent = '0';
             document.getElementById('due-today').textContent = '0';
             document.getElementById('new-cards').textContent = '0';
+            
+            // Show motivation for new users
+            updateMotivationSystem({
+              total_cards: 0,
+              due_today: 0,
+              new_cards: 0,
+              current_streak: 0,
+              mastered_cards: 0,
+              avg_quality: 0
+            });
           }
         } catch (e) {
-          console.error('Failed to load stats:', e);
+          console.error('Failed to initialize user dashboard:', e);
+          // Fallback to default values
+          document.getElementById('total-cards').textContent = '0';
+          document.getElementById('due-today').textContent = '0';
+          document.getElementById('new-cards').textContent = '0';
+          
+          // Show motivation for error case
+          updateMotivationSystem({
+            total_cards: 0,
+            due_today: 0,
+            new_cards: 0,
+            current_streak: 0,
+            mastered_cards: 0,
+            avg_quality: 0
+          });
+        }
+      }
+
+      function updateMotivationSystem(dashboard) {
+        const motivationSection = document.getElementById('motivation-section');
+        const motivationMessage = document.getElementById('motivation-message');
+        
+        // Show motivation section
+        motivationSection.style.display = 'block';
+        
+        // Update motivational message based on progress
+        let message = '';
+        const totalCards = dashboard.total_cards;
+        const dueToday = dashboard.due_today;
+        const streak = dashboard.current_streak;
+        const mastered = dashboard.mastered_cards;
+        const avgQuality = dashboard.avg_quality;
+        
+        if (totalCards === 0) {
+          message = '🌟 Добро пожаловать! Загрузите слова или создайте первую карточку';
+        } else if (dueToday === 0 && streak > 0) {
+          message = `🎉 Отлично! Вы изучили все на сегодня. Серия: ${streak} дней!`;
+        } else if (dueToday > 0) {
+          message = `💪 У вас есть ${dueToday} карточек для изучения. Продолжайте!`;
+        } else if (streak >= 7) {
+          message = `🔥 Невероятно! Серия ${streak} дней подряд!`;
+        } else {
+          message = `📚 Продолжайте изучение! Освоено: ${mastered} карточек`;
+        }
+        
+        motivationMessage.textContent = message;
+        
+        // Update badges based on achievements
+        updateBadge('first-card-badge', totalCards >= 1);
+        updateBadge('streak-7-badge', streak >= 7);
+        updateBadge('mastered-10-badge', mastered >= 10);
+        updateBadge('perfect-day-badge', avgQuality >= 0.9 && mastered > 0);
+      }
+      
+      function updateBadge(badgeId, isUnlocked) {
+        const badge = document.getElementById(badgeId);
+        if (isUnlocked) {
+          badge.classList.remove('locked');
+          badge.classList.add('unlocked');
+        } else {
+          badge.classList.remove('unlocked');
+          badge.classList.add('locked');
         }
       }
 
@@ -367,8 +664,8 @@
           const response = await api('/api/cards/bulk', 'POST');
           if (response.ok) {
             showStatus(`✅ Загружено ${response.created} новых карточек из ${response.total_processed}`, 'success');
-            // Refresh stats
-            await loadStats();
+            // Refresh dashboard
+            await initUserAndLoadDashboard();
           } else {
             showStatus(`❌ Ошибка: ${response.error}`, 'error');
           }
@@ -384,8 +681,8 @@
       // Add event listener for load words button
       document.getElementById('load-words-btn').addEventListener('click', loadWordsFromFile);
 
-      // Load stats on page load
-      loadStats();
+      // Initialize user and load dashboard on page load
+      initUserAndLoadDashboard();
     </script>
   </body>
   </html>

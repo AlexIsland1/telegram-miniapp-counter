@@ -224,6 +224,35 @@ def create_app() -> Flask:
             app.logger.error("BULK_CREATE error user_id=%s: %s", user_id, e)
             return jsonify({"ok": False, "error": "server error"}), 500
 
+    @app.post("/api/user/init")
+    def api_user_init():
+        """Initialize user and return dashboard data"""
+        user_id = extract_user_id_from_request()
+        if user_id is None:
+            app.logger.warning("USER_INIT unauthorized headers=%s body=%s", dict(request.headers), _safe_body())
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+            
+        try:
+            # Extract user profile data from request
+            data = request.get_json() or {}
+            username = data.get("username")
+            first_name = data.get("first_name")
+            
+            # Ensure user exists and get dashboard stats
+            ensure_user_exists(user_id, username, first_name)
+            dashboard_stats = get_user_dashboard_stats(user_id)
+            
+            app.logger.info("USER_INIT user_id=%s username=%s", user_id, username)
+            return jsonify({
+                "ok": True, 
+                "user_id": user_id,
+                "dashboard": dashboard_stats
+            })
+            
+        except Exception as e:
+            app.logger.error("USER_INIT error user_id=%s: %s", user_id, e)
+            return jsonify({"ok": False, "error": "server error"}), 500
+
     @app.get("/api/settings")
     def api_get_settings():
         """Get user notification settings"""
@@ -368,14 +397,119 @@ def get_db_connection():
     return conn
 
 
-def ensure_user_exists(user_id: int) -> None:
-    """Ensure user exists in users table"""
+def ensure_user_exists(user_id: int, username: str = None, first_name: str = None) -> None:
+    """Ensure user exists in users table with optional profile info"""
     with get_db_connection() as conn:
-        conn.execute(
-            "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
-            (user_id,)
-        )
-        conn.commit()
+        # Check if user already exists
+        existing = conn.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,)).fetchone()
+        
+        if not existing:
+            # Create new user
+            conn.execute(
+                "INSERT INTO users (user_id, username, first_name) VALUES (?, ?, ?)",
+                (user_id, username, first_name)
+            )
+            
+            # Create default settings
+            conn.execute(
+                "INSERT INTO user_settings (user_id, notifications_enabled, study_reminder_time, timezone) VALUES (?, ?, ?, ?)",
+                (user_id, True, "09:00", "UTC")
+            )
+            
+            conn.commit()
+            logging.getLogger(__name__).info(f"Created new user: {user_id} ({first_name})")
+        else:
+            # Update profile info if provided
+            if username or first_name:
+                conn.execute(
+                    "UPDATE users SET username = COALESCE(?, username), first_name = COALESCE(?, first_name) WHERE user_id = ?",
+                    (username, first_name, user_id)
+                )
+                conn.commit()
+
+
+def get_user_dashboard_stats(user_id: int) -> dict:
+    """Get comprehensive dashboard statistics for user"""
+    with get_db_connection() as conn:
+        today = date.today().isoformat()
+        
+        # Basic card counts
+        total_cards = conn.execute("SELECT COUNT(*) as count FROM cards WHERE user_id = ?", (user_id,)).fetchone()["count"]
+        
+        # Due cards
+        due_cards = conn.execute("""
+            SELECT COUNT(DISTINCT c.id) as count
+            FROM cards c
+            JOIN study_sessions s ON c.id = s.card_id
+            WHERE c.user_id = ? AND s.next_review_date <= ?
+            AND s.id IN (
+                SELECT MAX(id) FROM study_sessions 
+                WHERE card_id = c.id GROUP BY card_id
+            )
+        """, (user_id, today)).fetchone()["count"]
+        
+        # New cards
+        new_cards = conn.execute("""
+            SELECT COUNT(*) as count FROM cards c 
+            LEFT JOIN study_sessions s ON c.id = s.card_id 
+            WHERE c.user_id = ? AND s.card_id IS NULL
+        """, (user_id,)).fetchone()["count"]
+        
+        # Total study sessions
+        total_sessions = conn.execute("""
+            SELECT COUNT(*) as count FROM study_sessions s
+            JOIN cards c ON s.card_id = c.id
+            WHERE c.user_id = ?
+        """, (user_id,)).fetchone()["count"]
+        
+        # Current streak (consecutive days studied)
+        current_streak = conn.execute("""
+            SELECT COUNT(DISTINCT date(s.studied_at)) as streak
+            FROM study_sessions s
+            JOIN cards c ON s.card_id = c.id
+            WHERE c.user_id = ? AND date(s.studied_at) >= date('now', '-30 days')
+        """, (user_id,)).fetchone()["streak"]
+        
+        # Cards mastered (reviewed 3+ times with quality >= 4)
+        mastered_cards = conn.execute("""
+            SELECT COUNT(DISTINCT s.card_id) as count
+            FROM study_sessions s
+            JOIN cards c ON s.card_id = c.id
+            WHERE c.user_id = ?
+            GROUP BY s.card_id
+            HAVING COUNT(*) >= 3 AND AVG(s.quality) >= 4
+        """, (user_id,)).fetchone()
+        mastered_cards = mastered_cards["count"] if mastered_cards else 0
+        
+        # Weekly progress
+        week_sessions = conn.execute("""
+            SELECT COUNT(*) as count FROM study_sessions s
+            JOIN cards c ON s.card_id = c.id
+            WHERE c.user_id = ? AND date(s.studied_at) >= date('now', '-7 days')
+        """, (user_id,)).fetchone()["count"]
+        
+        # Average quality score
+        avg_quality = conn.execute("""
+            SELECT ROUND(AVG(s.quality), 1) as avg 
+            FROM study_sessions s
+            JOIN cards c ON s.card_id = c.id
+            WHERE c.user_id = ?
+        """, (user_id,)).fetchone()["avg"] or 0
+        
+        # Calculate weekly progress as percentage
+        weekly_progress = round((week_sessions / max(total_cards, 1)) * 100, 1) if total_cards > 0 else 0
+        
+        return {
+            "total_cards": total_cards,
+            "due_today": due_cards,
+            "new_cards": new_cards,
+            "total_sessions": total_sessions,
+            "current_streak": current_streak,
+            "mastered_cards": mastered_cards,
+            "weekly_progress": weekly_progress,
+            "avg_quality": avg_quality / 5.0 if avg_quality else 0,  # Convert to 0-1 scale
+            "completion_rate": round((mastered_cards / max(total_cards, 1)) * 100, 1) if total_cards > 0 else 0
+        }
 
 
 def calculate_sm2_interval(quality: int, interval_days: int, ease_factor: float) -> Tuple[int, float]:
