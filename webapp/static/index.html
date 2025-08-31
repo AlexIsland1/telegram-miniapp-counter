@@ -5,29 +5,145 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Счётчик кликов</title>
     <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 2rem; }
-      .wrap { max-width: 440px; margin: 0 auto; text-align: center; }
-      button { font-size: 20px; padding: 12px 18px; cursor: pointer; }
-      .count { font-size: 48px; margin: 24px 0; }
-      .row { margin: 12px 0; }
-      code { background: #f3f3f3; padding: 2px 6px; border-radius: 4px; }
+      * { box-sizing: border-box; }
+      
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        margin: 0;
+        padding: 1rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .wrap {
+        max-width: 360px;
+        width: 100%;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        padding: 2rem;
+        text-align: center;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+      }
+      
+      h1 {
+        color: #333;
+        margin: 0 0 1.5rem 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+      }
+      
+      .user-info {
+        background: rgba(102, 126, 234, 0.1);
+        border-radius: 12px;
+        padding: 0.75rem;
+        margin: 1rem 0;
+        color: #667eea;
+        font-weight: 500;
+      }
+      
+      .count {
+        font-size: 4rem;
+        font-weight: 700;
+        margin: 1.5rem 0;
+        color: #333;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      
+      .btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        border-radius: 50px;
+        color: white;
+        font-size: 1.1rem;
+        font-weight: 600;
+        padding: 1rem 2rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        margin: 0.5rem;
+        min-width: 140px;
+      }
+      
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+      }
+      
+      .btn:active {
+        transform: translateY(0);
+      }
+      
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+      }
+      
+      .btn-secondary {
+        background: linear-gradient(135deg, #ff7b7b 0%, #ff6b6b 100%);
+        box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+      }
+      
+      .btn-secondary:hover {
+        box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
+      }
+      
+      .status {
+        margin: 1rem 0;
+        padding: 0.75rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        min-height: 1.5rem;
+      }
+      
+      .status.error {
+        background: rgba(255, 107, 107, 0.1);
+        color: #ff4757;
+      }
+      
+      .status.success {
+        background: rgba(46, 204, 113, 0.1);
+        color: #2ed573;
+      }
+      
+      .help-text {
+        color: #888;
+        font-size: 0.8rem;
+        margin-top: 1.5rem;
+        opacity: 0.8;
+      }
+      
+      code {
+        background: rgba(0, 0, 0, 0.05);
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: 'Monaco', 'Menlo', monospace;
+      }
+      
+      @media (max-width: 480px) {
+        .wrap { padding: 1.5rem; margin: 0.5rem; }
+        .count { font-size: 3rem; }
+        .btn { padding: 0.875rem 1.5rem; font-size: 1rem; }
+      }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <h1>Telegram Mini App — Счётчик</h1>
-      <div class="row">Пользователь: <span id="uid">неизвестен</span></div>
+      <h1>🎯 Счётчик кликов</h1>
+      <div class="user-info">
+        Пользователь: <span id="uid">неизвестен</span>
+      </div>
       <div class="count" id="count">0</div>
-      <div class="row">
-        <button id="btn">Нажми меня</button>
-      </div>
-      <div class="row">
-        <button id="export-btn">Скачать JSON</button>
-      </div>
-      <div class="row" id="status"></div>
-      <p>
+      <button id="btn" class="btn">🚀 Нажми меня</button>
+      <button id="export-btn" class="btn btn-secondary">📥 Скачать данные</button>
+      <div class="status" id="status"></div>
+      <div class="help-text">
         Вне Telegram укажите <code>?user_id=123</code> в адресной строке для теста.
-      </p>
+      </div>
     </div>
 
     <script>
@@ -76,33 +192,47 @@
           if (data.ok) {
             elements.count.textContent = data.count;
             elements.status.textContent = '';
+            elements.status.className = 'status';
           } else {
             elements.status.textContent = 'Ошибка: ' + (data.error || 'неизвестно');
+            elements.status.className = 'status error';
           }
         } catch (e) {
           elements.status.textContent = 'Сеть: ' + e.message;
+          elements.status.className = 'status error';
         }
       }
 
       elements.btn.addEventListener('click', async () => {
         elements.btn.disabled = true;
+        elements.btn.textContent = '⏳ Загрузка...';
         try {
           const data = await api('/api/click');
           if (data.ok) {
             elements.count.textContent = data.count;
+            elements.status.textContent = '✅ Клик засчитан!';
+            elements.status.className = 'status success';
+            setTimeout(() => {
+              elements.status.textContent = '';
+              elements.status.className = 'status';
+            }, 2000);
           } else {
             elements.status.textContent = 'Ошибка: ' + (data.error || 'неизвестно');
+            elements.status.className = 'status error';
           }
         } catch (e) {
           elements.status.textContent = 'Сеть: ' + e.message;
+          elements.status.className = 'status error';
         } finally {
           elements.btn.disabled = false;
+          elements.btn.textContent = '🚀 Нажми меня';
         }
       });
 
       elements.exportBtn.addEventListener('click', async () => {
         if (!ctx.user_id) {
           elements.status.textContent = 'Ошибка: не найден user_id';
+          elements.status.className = 'status error';
           return;
         }
         
@@ -111,9 +241,15 @@
           link.href = `/api/export/${ctx.user_id}`;
           link.download = `user_${ctx.user_id}_data.json`;
           link.click();
-          elements.status.textContent = 'Файл скачан';
+          elements.status.textContent = '📁 Файл скачан';
+          elements.status.className = 'status success';
+          setTimeout(() => {
+            elements.status.textContent = '';
+            elements.status.className = 'status';
+          }, 3000);
         } catch (e) {
           elements.status.textContent = 'Ошибка скачивания: ' + e.message;
+          elements.status.className = 'status error';
         }
       });
 
