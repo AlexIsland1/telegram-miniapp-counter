@@ -6,7 +6,7 @@ import sqlite3
 import time
 import urllib.parse
 from typing import Optional, Tuple
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 import logging
 from logging.handlers import RotatingFileHandler
@@ -108,12 +108,93 @@ def create_app() -> Flask:
             
         return send_from_directory(EXPORTS_DIR, filename, as_attachment=True)
 
+    # Spaced repetition API endpoints
+    @app.post("/api/cards")
+    def api_create_card():
+        """Create a new flashcard"""
+        user_id = extract_user_id_from_request()
+        if user_id is None:
+            app.logger.warning("CREATE_CARD unauthorized headers=%s body=%s", dict(request.headers), _safe_body())
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+            
+        try:
+            data = request.get_json()
+            front = data.get("front", "").strip()
+            back = data.get("back", "").strip()
+            
+            if not front or not back:
+                return jsonify({"ok": False, "error": "front and back are required"}), 400
+                
+            card_id = create_card(user_id, front, back)
+            app.logger.info("CREATE_CARD user_id=%s card_id=%s", user_id, card_id)
+            return jsonify({"ok": True, "card_id": card_id})
+            
+        except Exception as e:
+            app.logger.error("CREATE_CARD error user_id=%s: %s", user_id, e)
+            return jsonify({"ok": False, "error": "server error"}), 500
+
+    @app.get("/api/cards/review")
+    def api_get_review_cards():
+        """Get cards due for review"""
+        user_id = extract_user_id_from_request()
+        if user_id is None:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+            
+        try:
+            limit = int(request.args.get("limit", 10))
+            cards = get_cards_for_review(user_id, limit)
+            app.logger.info("GET_REVIEW_CARDS user_id=%s count=%s", user_id, len(cards))
+            return jsonify({"ok": True, "cards": cards})
+            
+        except Exception as e:
+            app.logger.error("GET_REVIEW_CARDS error user_id=%s: %s", user_id, e)
+            return jsonify({"ok": False, "error": "server error"}), 500
+
+    @app.post("/api/cards/<int:card_id>/review")
+    def api_review_card(card_id: int):
+        """Record a review for a card"""
+        user_id = extract_user_id_from_request()
+        if user_id is None:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+            
+        try:
+            data = request.get_json()
+            quality = data.get("quality")
+            
+            if quality is None or not (1 <= quality <= 5):
+                return jsonify({"ok": False, "error": "quality must be between 1 and 5"}), 400
+                
+            success = review_card(user_id, card_id, quality)
+            app.logger.info("REVIEW_CARD user_id=%s card_id=%s quality=%s", user_id, card_id, quality)
+            return jsonify({"ok": True, "reviewed": success})
+            
+        except Exception as e:
+            app.logger.error("REVIEW_CARD error user_id=%s card_id=%s: %s", user_id, card_id, e)
+            return jsonify({"ok": False, "error": "server error"}), 500
+
+    @app.get("/api/stats")
+    def api_get_stats():
+        """Get user study statistics"""
+        user_id = extract_user_id_from_request()
+        if user_id is None:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+            
+        try:
+            stats = get_user_stats(user_id)
+            app.logger.info("GET_STATS user_id=%s stats=%s", user_id, stats)
+            return jsonify({"ok": True, "stats": stats})
+            
+        except Exception as e:
+            app.logger.error("GET_STATS error user_id=%s: %s", user_id, e)
+            return jsonify({"ok": False, "error": "server error"}), 500
+
     return app
 
 
 def init_db() -> None:
     os.makedirs(BASE_DIR, exist_ok=True)
     with sqlite3.connect(DB_PATH) as conn:
+        # Existing table
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS counts (
@@ -122,6 +203,50 @@ def init_db() -> None:
             )
             """
         )
+        
+        # Spaced repetition tables
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                front TEXT NOT NULL,
+                back TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES counts(user_id)
+            )
+            """
+        )
+        
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS study_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                card_id INTEGER NOT NULL,
+                user_id INTEGER NOT NULL,
+                quality INTEGER NOT NULL CHECK (quality >= 1 AND quality <= 5),
+                interval_days INTEGER NOT NULL DEFAULT 1,
+                ease_factor REAL NOT NULL DEFAULT 2.5,
+                next_review_date DATE NOT NULL,
+                studied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+                FOREIGN KEY (user_id) REFERENCES counts(user_id)
+            )
+            """
+        )
+        
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_settings (
+                user_id INTEGER PRIMARY KEY,
+                notifications_enabled BOOLEAN DEFAULT 1,
+                study_reminder_time TEXT DEFAULT '09:00',
+                timezone TEXT DEFAULT 'UTC',
+                FOREIGN KEY (user_id) REFERENCES counts(user_id)
+            )
+            """
+        )
+        
         conn.commit()
 
 
@@ -153,6 +278,135 @@ def increment_count(user_id: int) -> int:
         # Auto-save to JSON after each click
         save_user_data_to_json(user_id, new_val)
         return new_val
+
+
+def calculate_sm2_interval(quality: int, interval_days: int, ease_factor: float) -> Tuple[int, float]:
+    """
+    SM-2 Algorithm for spaced repetition
+    quality: 1-5 (how well user remembered the card)
+    interval_days: current interval in days
+    ease_factor: current ease factor (starts at 2.5)
+    
+    Returns: (new_interval_days, new_ease_factor)
+    """
+    if quality < 3:
+        # Reset interval if quality is poor
+        new_interval = 1
+        new_ease_factor = ease_factor
+    else:
+        if interval_days == 1:
+            new_interval = 6
+        elif interval_days == 6:
+            new_interval = 16
+        else:
+            new_interval = int(interval_days * ease_factor)
+        
+        # Update ease factor
+        new_ease_factor = max(1.3, ease_factor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02)))
+    
+    return new_interval, new_ease_factor
+
+
+def create_card(user_id: int, front: str, back: str) -> int:
+    """Create a new flashcard"""
+    with get_db_connection() as conn:
+        cur = conn.execute(
+            "INSERT INTO cards (user_id, front, back) VALUES (?, ?, ?)",
+            (user_id, front, back)
+        )
+        conn.commit()
+        return cur.lastrowid
+
+
+def get_cards_for_review(user_id: int, limit: int = 10) -> list:
+    """Get cards that are due for review"""
+    today = date.today().isoformat()
+    
+    with get_db_connection() as conn:
+        # Get new cards (never studied)
+        new_cards = conn.execute("""
+            SELECT c.id, c.front, c.back, 'new' as status
+            FROM cards c 
+            LEFT JOIN study_sessions s ON c.id = s.card_id 
+            WHERE c.user_id = ? AND s.card_id IS NULL
+            LIMIT ?
+        """, (user_id, limit // 2)).fetchall()
+        
+        # Get due cards
+        due_cards = conn.execute("""
+            SELECT DISTINCT c.id, c.front, c.back, 'due' as status
+            FROM cards c
+            JOIN study_sessions s ON c.id = s.card_id
+            WHERE c.user_id = ? 
+            AND s.next_review_date <= ?
+            AND s.id IN (
+                SELECT MAX(id) FROM study_sessions 
+                WHERE card_id = c.id GROUP BY card_id
+            )
+            LIMIT ?
+        """, (user_id, today, limit - len(new_cards))).fetchall()
+        
+        return [dict(row) for row in new_cards + due_cards]
+
+
+def review_card(user_id: int, card_id: int, quality: int) -> bool:
+    """Record a review session for a card"""
+    with get_db_connection() as conn:
+        # Get the last review session for this card
+        last_session = conn.execute("""
+            SELECT interval_days, ease_factor FROM study_sessions 
+            WHERE card_id = ? AND user_id = ?
+            ORDER BY id DESC LIMIT 1
+        """, (card_id, user_id)).fetchone()
+        
+        if last_session:
+            interval_days, ease_factor = last_session["interval_days"], last_session["ease_factor"]
+        else:
+            interval_days, ease_factor = 1, 2.5
+        
+        # Calculate new interval using SM-2
+        new_interval, new_ease_factor = calculate_sm2_interval(quality, interval_days, ease_factor)
+        next_review_date = (date.today() + timedelta(days=new_interval)).isoformat()
+        
+        # Insert new review session
+        conn.execute("""
+            INSERT INTO study_sessions 
+            (card_id, user_id, quality, interval_days, ease_factor, next_review_date)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (card_id, user_id, quality, new_interval, new_ease_factor, next_review_date))
+        
+        conn.commit()
+        return True
+
+
+def get_user_stats(user_id: int) -> dict:
+    """Get user study statistics"""
+    with get_db_connection() as conn:
+        total_cards = conn.execute("SELECT COUNT(*) as count FROM cards WHERE user_id = ?", (user_id,)).fetchone()["count"]
+        
+        today = date.today().isoformat()
+        due_today = conn.execute("""
+            SELECT COUNT(DISTINCT c.id) as count
+            FROM cards c
+            JOIN study_sessions s ON c.id = s.card_id
+            WHERE c.user_id = ? AND s.next_review_date <= ?
+            AND s.id IN (
+                SELECT MAX(id) FROM study_sessions 
+                WHERE card_id = c.id GROUP BY card_id
+            )
+        """, (user_id, today)).fetchone()["count"]
+        
+        new_cards = conn.execute("""
+            SELECT COUNT(*) as count FROM cards c 
+            LEFT JOIN study_sessions s ON c.id = s.card_id 
+            WHERE c.user_id = ? AND s.card_id IS NULL
+        """, (user_id,)).fetchone()["count"]
+        
+        return {
+            "total_cards": total_cards,
+            "due_today": due_today,
+            "new_cards": new_cards
+        }
 
 
 def extract_user_id_from_request() -> Optional[int]:

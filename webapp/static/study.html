@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Изучение карточек</title>
+    <style>
+      * { box-sizing: border-box; }
+      
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        margin: 0;
+        padding: 1rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .app {
+        max-width: 400px;
+        width: 100%;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 20px;
+        padding: 2rem;
+        text-align: center;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        backdrop-filter: blur(10px);
+      }
+      
+      h1 {
+        color: #333;
+        margin: 0 0 1.5rem 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+      }
+      
+      .nav {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+      }
+      
+      .nav-btn {
+        flex: 1;
+        background: rgba(102, 126, 234, 0.1);
+        border: 2px solid rgba(102, 126, 234, 0.3);
+        border-radius: 12px;
+        color: #667eea;
+        font-weight: 600;
+        padding: 0.75rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+      }
+      
+      .nav-btn.active {
+        background: #667eea;
+        color: white;
+      }
+      
+      .nav-btn:hover {
+        transform: translateY(-2px);
+      }
+      
+      .screen {
+        display: none;
+      }
+      
+      .screen.active {
+        display: block;
+      }
+      
+      .stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+      }
+      
+      .stat {
+        background: rgba(102, 126, 234, 0.1);
+        border-radius: 12px;
+        padding: 1rem;
+      }
+      
+      .stat-number {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #667eea;
+      }
+      
+      .stat-label {
+        font-size: 0.8rem;
+        color: #888;
+        margin-top: 0.25rem;
+      }
+      
+      .flashcard {
+        background: white;
+        border-radius: 16px;
+        padding: 2rem;
+        margin: 1.5rem 0;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+        min-height: 200px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: transform 0.3s ease;
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .flashcard:hover {
+        transform: translateY(-4px);
+      }
+      
+      .flashcard.flipped {
+        background: #f8f9ff;
+      }
+      
+      .card-content {
+        font-size: 1.1rem;
+        line-height: 1.4;
+        word-break: break-word;
+      }
+      
+      .card-hint {
+        position: absolute;
+        bottom: 1rem;
+        right: 1rem;
+        font-size: 0.8rem;
+        color: #aaa;
+      }
+      
+      .quality-buttons {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 0.5rem;
+        margin-top: 1rem;
+      }
+      
+      .quality-btn {
+        background: linear-gradient(135deg, #ff7b7b 0%, #ff6b6b 100%);
+        border: none;
+        border-radius: 8px;
+        color: white;
+        font-weight: 600;
+        padding: 0.75rem 0.5rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 0.9rem;
+      }
+      
+      .quality-btn:nth-child(3) {
+        background: linear-gradient(135deg, #ffa726 0%, #ff9800 100%);
+      }
+      
+      .quality-btn:nth-child(4),
+      .quality-btn:nth-child(5) {
+        background: linear-gradient(135deg, #66bb6a 0%, #4caf50 100%);
+      }
+      
+      .quality-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+      }
+      
+      .form {
+        text-align: left;
+      }
+      
+      .form-group {
+        margin-bottom: 1.5rem;
+      }
+      
+      label {
+        display: block;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 0.5rem;
+      }
+      
+      input, textarea {
+        width: 100%;
+        padding: 0.75rem;
+        border: 2px solid rgba(102, 126, 234, 0.2);
+        border-radius: 8px;
+        font-size: 1rem;
+        transition: border-color 0.3s ease;
+      }
+      
+      input:focus, textarea:focus {
+        outline: none;
+        border-color: #667eea;
+      }
+      
+      textarea {
+        resize: vertical;
+        min-height: 80px;
+      }
+      
+      .btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        border-radius: 12px;
+        color: white;
+        font-size: 1rem;
+        font-weight: 600;
+        padding: 1rem 2rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        width: 100%;
+      }
+      
+      .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+      }
+      
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+      }
+      
+      .status {
+        margin: 1rem 0;
+        padding: 0.75rem;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        min-height: 1.5rem;
+      }
+      
+      .status.error {
+        background: rgba(255, 107, 107, 0.1);
+        color: #ff4757;
+      }
+      
+      .status.success {
+        background: rgba(46, 204, 113, 0.1);
+        color: #2ed573;
+      }
+      
+      .no-cards {
+        background: rgba(102, 126, 234, 0.1);
+        border-radius: 16px;
+        padding: 2rem;
+        margin: 1.5rem 0;
+        color: #667eea;
+        font-weight: 500;
+      }
+      
+      @media (max-width: 480px) {
+        .app { padding: 1.5rem; margin: 0.5rem; }
+        .nav { flex-direction: column; gap: 0.5rem; }
+        .stats { grid-template-columns: 1fr; gap: 0.5rem; }
+        .quality-buttons { grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <h1>🧠 Изучение карточек</h1>
+      
+      <div class="nav">
+        <button class="nav-btn active" data-screen="study">Изучение</button>
+        <button class="nav-btn" data-screen="create">Создать</button>
+        <button class="nav-btn" data-screen="stats">Статистика</button>
+      </div>
+
+      <!-- Study Screen -->
+      <div class="screen active" id="study-screen">
+        <div id="review-area">
+          <div class="no-cards" id="no-cards" style="display: none;">
+            🎉 Нет карточек для изучения!<br>
+            Создайте новые карточки или повторите завтра.
+          </div>
+          
+          <div id="card-area" style="display: none;">
+            <div class="flashcard" id="flashcard">
+              <div class="card-content" id="card-content"></div>
+              <div class="card-hint" id="card-hint">Нажмите для переворота</div>
+            </div>
+            
+            <div class="quality-buttons" id="quality-buttons" style="display: none;">
+              <button class="quality-btn" data-quality="1">😫<br>Снова</button>
+              <button class="quality-btn" data-quality="2">😕<br>Трудно</button>
+              <button class="quality-btn" data-quality="3">😐<br>Хорошо</button>
+              <button class="quality-btn" data-quality="4">😊<br>Легко</button>
+              <button class="quality-btn" data-quality="5">🤩<br>Очень легко</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Create Screen -->
+      <div class="screen" id="create-screen">
+        <form class="form" id="create-form">
+          <div class="form-group">
+            <label for="front">Вопрос (лицевая сторона):</label>
+            <textarea id="front" placeholder="Введите вопрос или термин..." required></textarea>
+          </div>
+          
+          <div class="form-group">
+            <label for="back">Ответ (обратная сторона):</label>
+            <textarea id="back" placeholder="Введите ответ или определение..." required></textarea>
+          </div>
+          
+          <button type="submit" class="btn" id="create-btn">✨ Создать карточку</button>
+        </form>
+      </div>
+
+      <!-- Stats Screen -->
+      <div class="screen" id="stats-screen">
+        <div class="stats" id="stats-display">
+          <div class="stat">
+            <div class="stat-number" id="total-cards">-</div>
+            <div class="stat-label">Всего карточек</div>
+          </div>
+          <div class="stat">
+            <div class="stat-number" id="due-today">-</div>
+            <div class="stat-label">К изучению</div>
+          </div>
+          <div class="stat">
+            <div class="stat-number" id="new-cards">-</div>
+            <div class="stat-label">Новых</div>
+          </div>
+        </div>
+        
+        <button class="btn" onclick="loadStats()">🔄 Обновить</button>
+      </div>
+      
+      <div class="status" id="status"></div>
+    </div>
+
+    <script>
+      const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+      if (tg) {
+        try { tg.expand(); } catch (e) {}
+      }
+
+      let currentCards = [];
+      let currentCardIndex = 0;
+      let currentCard = null;
+      let isFlipped = false;
+
+      const initData = tg ? tg.initData : null;
+      const initDataUnsafe = tg ? tg.initDataUnsafe : null;
+      const userIdFromTG = initDataUnsafe && initDataUnsafe.user ? initDataUnsafe.user.id : null;
+      const userIdFromQS = new URL(window.location.href).searchParams.get('user_id');
+
+      const ctx = {
+        initData,
+        user_id: userIdFromTG || userIdFromQS || 234195742,
+      };
+
+      async function api(path, method = 'GET', data = null) {
+        const options = {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+        };
+        
+        if (data) {
+          options.body = JSON.stringify({ initData: ctx.initData, user_id: ctx.user_id, ...data });
+        } else if (method === 'POST') {
+          options.body = JSON.stringify({ initData: ctx.initData, user_id: ctx.user_id });
+        }
+
+        const res = await fetch(path, options);
+        return await res.json();
+      }
+
+      function showStatus(message, type = '') {
+        const status = document.getElementById('status');
+        status.textContent = message;
+        status.className = `status ${type}`;
+        if (type) {
+          setTimeout(() => {
+            status.textContent = '';
+            status.className = 'status';
+          }, 3000);
+        }
+      }
+
+      async function loadReviewCards() {
+        try {
+          const response = await api('/api/cards/review');
+          if (response.ok) {
+            currentCards = response.cards;
+            currentCardIndex = 0;
+            displayCurrentCard();
+          } else {
+            showStatus('Ошибка: ' + response.error, 'error');
+          }
+        } catch (e) {
+          showStatus('Сетевая ошибка: ' + e.message, 'error');
+        }
+      }
+
+      function displayCurrentCard() {
+        const noCards = document.getElementById('no-cards');
+        const cardArea = document.getElementById('card-area');
+        
+        if (currentCards.length === 0) {
+          noCards.style.display = 'block';
+          cardArea.style.display = 'none';
+          return;
+        }
+
+        noCards.style.display = 'none';
+        cardArea.style.display = 'block';
+        
+        currentCard = currentCards[currentCardIndex];
+        isFlipped = false;
+        
+        const cardContent = document.getElementById('card-content');
+        const flashcard = document.getElementById('flashcard');
+        const qualityButtons = document.getElementById('quality-buttons');
+        
+        cardContent.textContent = currentCard.front;
+        flashcard.className = 'flashcard';
+        qualityButtons.style.display = 'none';
+        
+        document.getElementById('card-hint').textContent = 'Нажмите для переворота';
+      }
+
+      document.getElementById('flashcard').addEventListener('click', function() {
+        if (!currentCard || isFlipped) return;
+        
+        const cardContent = document.getElementById('card-content');
+        const flashcard = document.getElementById('flashcard');
+        const qualityButtons = document.getElementById('quality-buttons');
+        
+        cardContent.textContent = currentCard.back;
+        flashcard.className = 'flashcard flipped';
+        qualityButtons.style.display = 'grid';
+        isFlipped = true;
+        
+        document.getElementById('card-hint').textContent = 'Как хорошо помните?';
+      });
+
+      document.querySelectorAll('.quality-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+          if (!currentCard) return;
+          
+          const quality = parseInt(this.dataset.quality);
+          
+          try {
+            const response = await api(`/api/cards/${currentCard.id}/review`, 'POST', { quality });
+            if (response.ok) {
+              showStatus('✅ Ответ записан!', 'success');
+              
+              // Move to next card
+              currentCardIndex++;
+              if (currentCardIndex >= currentCards.length) {
+                // Reload cards or show completion
+                await loadReviewCards();
+              } else {
+                displayCurrentCard();
+              }
+            } else {
+              showStatus('Ошибка: ' + response.error, 'error');
+            }
+          } catch (e) {
+            showStatus('Сетевая ошибка: ' + e.message, 'error');
+          }
+        });
+      });
+
+      document.getElementById('create-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const front = document.getElementById('front').value.trim();
+        const back = document.getElementById('back').value.trim();
+        const btn = document.getElementById('create-btn');
+        
+        if (!front || !back) return;
+        
+        btn.disabled = true;
+        btn.textContent = '⏳ Создание...';
+        
+        try {
+          const response = await api('/api/cards', 'POST', { front, back });
+          if (response.ok) {
+            showStatus('✨ Карточка создана!', 'success');
+            document.getElementById('create-form').reset();
+            await loadStats();
+          } else {
+            showStatus('Ошибка: ' + response.error, 'error');
+          }
+        } catch (e) {
+          showStatus('Сетевая ошибка: ' + e.message, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = '✨ Создать карточку';
+        }
+      });
+
+      async function loadStats() {
+        try {
+          const response = await api('/api/stats');
+          if (response.ok) {
+            const stats = response.stats;
+            document.getElementById('total-cards').textContent = stats.total_cards;
+            document.getElementById('due-today').textContent = stats.due_today;
+            document.getElementById('new-cards').textContent = stats.new_cards;
+          }
+        } catch (e) {
+          console.error('Failed to load stats:', e);
+        }
+      }
+
+      // Navigation
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const targetScreen = this.dataset.screen;
+          
+          // Update nav buttons
+          document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+          this.classList.add('active');
+          
+          // Update screens
+          document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+          document.getElementById(targetScreen + '-screen').classList.add('active');
+          
+          // Load data for specific screens
+          if (targetScreen === 'study') {
+            loadReviewCards();
+          } else if (targetScreen === 'stats') {
+            loadStats();
+          }
+        });
+      });
+
+      // Initialize
+      loadReviewCards();
+      loadStats();
+    </script>
+  </body>
+</html>
