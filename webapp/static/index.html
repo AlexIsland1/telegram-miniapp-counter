@@ -133,6 +133,15 @@
         background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
       }
       
+      .btn-accent {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        color: white;
+      }
+      
+      .btn-accent:hover {
+        background: linear-gradient(135deg, #d97706 0%, #b45309 100%);
+      }
+      
       .btn-icon {
         font-size: 1.2rem;
       }
@@ -240,6 +249,11 @@
           <span class="btn-text">Начать изучение</span>
         </a>
         
+        <button id="load-words-btn" class="btn btn-accent">
+          <span class="btn-icon">📥</span>
+          <span class="btn-text">Загрузить слова</span>
+        </button>
+        
         <a href="study.html#create" class="btn btn-secondary">
           <span class="btn-icon">✨</span>
           <span class="btn-text">Создать карточку</span>
@@ -340,6 +354,35 @@
           console.error('Failed to load stats:', e);
         }
       }
+
+      async function loadWordsFromFile() {
+        const btn = document.getElementById('load-words-btn');
+        const originalText = btn.querySelector('.btn-text').textContent;
+        
+        btn.disabled = true;
+        btn.querySelector('.btn-text').textContent = 'Загрузка...';
+        btn.querySelector('.btn-icon').textContent = '⏳';
+        
+        try {
+          const response = await api('/api/cards/bulk', 'POST');
+          if (response.ok) {
+            showStatus(`✅ Загружено ${response.created} новых карточек из ${response.total_processed}`, 'success');
+            // Refresh stats
+            await loadStats();
+          } else {
+            showStatus(`❌ Ошибка: ${response.error}`, 'error');
+          }
+        } catch (e) {
+          showStatus(`❌ Сетевая ошибка: ${e.message}`, 'error');
+        } finally {
+          btn.disabled = false;
+          btn.querySelector('.btn-text').textContent = originalText;
+          btn.querySelector('.btn-icon').textContent = '📥';
+        }
+      }
+
+      // Add event listener for load words button
+      document.getElementById('load-words-btn').addEventListener('click', loadWordsFromFile);
 
       // Load stats on page load
       loadStats();

@@ -158,6 +158,72 @@ def create_app() -> Flask:
             app.logger.error("GET_STATS error user_id=%s: %s", user_id, e)
             return jsonify({"ok": False, "error": "server error"}), 500
 
+    @app.post("/api/cards/bulk")
+    def api_bulk_create_cards():
+        """Bulk create cards from new_words.json file"""
+        user_id = extract_user_id_from_request()
+        if user_id is None:
+            app.logger.warning("BULK_CREATE unauthorized headers=%s body=%s", dict(request.headers), _safe_body())
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+            
+        try:
+            words_file_path = os.path.join(os.path.dirname(BASE_DIR), "new_words.json")
+            
+            if not os.path.exists(words_file_path):
+                return jsonify({"ok": False, "error": "new_words.json file not found"}), 404
+                
+            with open(words_file_path, 'r', encoding='utf-8') as f:
+                words_data = json.load(f)
+            
+            cards = words_data.get('cards', [])
+            if not cards:
+                return jsonify({"ok": False, "error": "No cards found in file"}), 400
+                
+            created_count = 0
+            ensure_user_exists(user_id)
+            
+            with get_db_connection() as conn:
+                for card in cards:
+                    # Map uz->ru format to front->back
+                    front = card.get('uz', '')
+                    back = card.get('ru', '')
+                    note = card.get('note', '')
+                    
+                    if front and back:
+                        # Add note to back if exists
+                        if note:
+                            back = f"{back}\n\n💡 {note}"
+                            
+                        # Check if card already exists for this user
+                        existing = conn.execute(
+                            "SELECT id FROM cards WHERE user_id = ? AND front = ? AND back = ?",
+                            (user_id, front, back)
+                        ).fetchone()
+                        
+                        if not existing:
+                            conn.execute(
+                                "INSERT INTO cards (user_id, front, back) VALUES (?, ?, ?)",
+                                (user_id, front, back)
+                            )
+                            created_count += 1
+                
+                conn.commit()
+            
+            app.logger.info("BULK_CREATE user_id=%s created=%s total_cards=%s", user_id, created_count, len(cards))
+            return jsonify({
+                "ok": True, 
+                "created": created_count, 
+                "total_processed": len(cards),
+                "skipped": len(cards) - created_count
+            })
+            
+        except json.JSONDecodeError:
+            app.logger.error("BULK_CREATE invalid JSON in new_words.json")
+            return jsonify({"ok": False, "error": "Invalid JSON format"}), 400
+        except Exception as e:
+            app.logger.error("BULK_CREATE error user_id=%s: %s", user_id, e)
+            return jsonify({"ok": False, "error": "server error"}), 500
+
     return app
 
 

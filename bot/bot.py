@@ -5,6 +5,8 @@ import os
 
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
+import aiohttp
+import json
 from aiogram import F
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.exceptions import TelegramBadRequest
@@ -82,6 +84,55 @@ async def main():
     @dp.message(Command("health"))
     async def on_health(message: types.Message):
         await message.answer("ok: polling active")
+
+    @dp.message(Command("load_words"))
+    async def on_load_words(message: types.Message):
+        """Load words from new_words.json file via API"""
+        try:
+            user_id = message.from_user.id
+            logging.info("LOAD_WORDS command from user_id=%s", user_id)
+            
+            # Send loading message
+            loading_msg = await message.answer("⏳ Загружаю слова из файла...")
+            
+            # Prepare API request data
+            api_data = {
+                "user_id": user_id
+            }
+            
+            # Make request to bulk create API
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{APP_URL}/api/cards/bulk",
+                    json=api_data,
+                    headers={"Content-Type": "application/json"}
+                ) as resp:
+                    if resp.status == 200:
+                        result = await resp.json()
+                        if result.get("ok"):
+                            created = result.get("created", 0)
+                            total = result.get("total_processed", 0)
+                            skipped = result.get("skipped", 0)
+                            
+                            await loading_msg.edit_text(
+                                f"✅ Успешно загружено!\n\n"
+                                f"📥 Создано новых карточек: {created}\n"
+                                f"📊 Всего обработано: {total}\n"
+                                f"⏭️ Пропущено дубликатов: {skipped}\n\n"
+                                f"Теперь можете изучать новые слова! 🚀"
+                            )
+                        else:
+                            error = result.get("error", "неизвестная ошибка")
+                            await loading_msg.edit_text(f"❌ Ошибка API: {error}")
+                    else:
+                        await loading_msg.edit_text(f"❌ Ошибка сервера: HTTP {resp.status}")
+                        
+        except aiohttp.ClientError as e:
+            logging.error("LOAD_WORDS network error: %s", e)
+            await message.answer("❌ Ошибка сети. Проверьте подключение к серверу.")
+        except Exception as e:
+            logging.exception("LOAD_WORDS error: %s", e)
+            await message.answer("❌ Произошла ошибка при загрузке слов.")
 
     # Ensure polling works (remove webhook if previously set)
     try:
