@@ -77,36 +77,6 @@ def create_app() -> Flask:
     def index():
         return send_from_directory(app.static_folder, "index.html")
 
-    @app.post("/api/count")
-    def api_count():
-        user_id = extract_user_id_from_request()
-        if user_id is None:
-            app.logger.warning("COUNT unauthorized headers=%s body=%s", dict(request.headers), _safe_body())
-            return jsonify({"ok": False, "error": "unauthorized"}), 401
-        count = get_count(user_id)
-        app.logger.info("COUNT user_id=%s -> %s", user_id, count)
-        return jsonify({"ok": True, "user_id": user_id, "count": count})
-
-    @app.post("/api/click")
-    def api_click():
-        user_id = extract_user_id_from_request()
-        if user_id is None:
-            app.logger.warning("CLICK unauthorized headers=%s body=%s", dict(request.headers), _safe_body())
-            return jsonify({"ok": False, "error": "unauthorized"}), 401
-        count = increment_count(user_id)
-        app.logger.info("CLICK user_id=%s -> %s", user_id, count)
-        return jsonify({"ok": True, "user_id": user_id, "count": count})
-
-    @app.get("/api/export/<int:user_id>")
-    def api_export_user(user_id: int):
-        """Download user data as JSON file"""
-        filename = f"user_{user_id}_data.json"
-        filepath = os.path.join(EXPORTS_DIR, filename)
-        
-        if not os.path.exists(filepath):
-            return jsonify({"ok": False, "error": "No data found for this user"}), 404
-            
-        return send_from_directory(EXPORTS_DIR, filename, as_attachment=True)
 
     # Spaced repetition API endpoints
     @app.post("/api/cards")
@@ -194,12 +164,14 @@ def create_app() -> Flask:
 def init_db() -> None:
     os.makedirs(BASE_DIR, exist_ok=True)
     with sqlite3.connect(DB_PATH) as conn:
-        # Existing table
+        # Users table for authentication tracking
         conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS counts (
+            CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
-                count INTEGER NOT NULL DEFAULT 0
+                username TEXT,
+                first_name TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """
         )
@@ -213,7 +185,7 @@ def init_db() -> None:
                 front TEXT NOT NULL,
                 back TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (user_id) REFERENCES counts(user_id)
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
             )
             """
         )
@@ -230,7 +202,7 @@ def init_db() -> None:
                 next_review_date DATE NOT NULL,
                 studied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
-                FOREIGN KEY (user_id) REFERENCES counts(user_id)
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
             )
             """
         )
@@ -242,7 +214,7 @@ def init_db() -> None:
                 notifications_enabled BOOLEAN DEFAULT 1,
                 study_reminder_time TEXT DEFAULT '09:00',
                 timezone TEXT DEFAULT 'UTC',
-                FOREIGN KEY (user_id) REFERENCES counts(user_id)
+                FOREIGN KEY (user_id) REFERENCES users(user_id)
             )
             """
         )
@@ -256,28 +228,14 @@ def get_db_connection():
     return conn
 
 
-def get_count(user_id: int) -> int:
+def ensure_user_exists(user_id: int) -> None:
+    """Ensure user exists in users table"""
     with get_db_connection() as conn:
-        row = conn.execute("SELECT count FROM counts WHERE user_id=?", (user_id,)).fetchone()
-        return int(row["count"]) if row else 0
-
-
-def increment_count(user_id: int) -> int:
-    with get_db_connection() as conn:
-        cur = conn.execute("SELECT count FROM counts WHERE user_id=?", (user_id,))
-        row = cur.fetchone()
-        if row is None:
-            conn.execute("INSERT INTO counts(user_id, count) VALUES(?, 1)", (user_id,))
-            conn.commit()
-            new_val = 1
-        else:
-            new_val = int(row["count"]) + 1
-            conn.execute("UPDATE counts SET count=? WHERE user_id=?", (new_val, user_id))
-            conn.commit()
-        
-        # Auto-save to JSON after each click
-        save_user_data_to_json(user_id, new_val)
-        return new_val
+        conn.execute(
+            "INSERT OR IGNORE INTO users (user_id) VALUES (?)",
+            (user_id,)
+        )
+        conn.commit()
 
 
 def calculate_sm2_interval(quality: int, interval_days: int, ease_factor: float) -> Tuple[int, float]:
@@ -309,6 +267,7 @@ def calculate_sm2_interval(quality: int, interval_days: int, ease_factor: float)
 
 def create_card(user_id: int, front: str, back: str) -> int:
     """Create a new flashcard"""
+    ensure_user_exists(user_id)
     with get_db_connection() as conn:
         cur = conn.execute(
             "INSERT INTO cards (user_id, front, back) VALUES (?, ?, ?)",
@@ -472,25 +431,6 @@ def validate_and_get_user_id(init_data: str, bot_token: str) -> Tuple[bool, Opti
         return False, None
 
 
-def save_user_data_to_json(user_id: int, count: int) -> None:
-    """Save user click count to individual JSON file"""
-    try:
-        filename = f"user_{user_id}_data.json"
-        filepath = os.path.join(EXPORTS_DIR, filename)
-        
-        data = {
-            "user_id": user_id,
-            "count": count,
-            "last_updated": datetime.now().isoformat(),
-            "export_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-            
-        logging.getLogger(__name__).info("Saved user data to JSON: user_id=%s, count=%s", user_id, count)
-    except Exception as e:
-        logging.getLogger(__name__).error("Failed to save user data to JSON: %s", e)
 
 
 # Create app instance for WSGI servers like gunicorn
