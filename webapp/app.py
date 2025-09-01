@@ -120,6 +120,25 @@ def create_app() -> Flask:
             app.logger.error("GET_REVIEW_CARDS error user_id=%s: %s", user_id, e)
             return jsonify({"ok": False, "error": "server error"}), 500
 
+    @app.get("/api/cards/<int:card_id>")
+    def api_get_card(card_id: int):
+        """Get a specific card by ID"""
+        user_id = extract_user_id_from_request()
+        if user_id is None:
+            return jsonify({"ok": False, "error": "unauthorized"}), 401
+            
+        try:
+            card = get_card_by_id(user_id, card_id)
+            if not card:
+                return jsonify({"ok": False, "error": "card not found"}), 404
+                
+            app.logger.info("GET_CARD user_id=%s card_id=%s", user_id, card_id)
+            return jsonify({"ok": True, "card": card})
+            
+        except Exception as e:
+            app.logger.error("GET_CARD error user_id=%s card_id=%s: %s", user_id, card_id, e)
+            return jsonify({"ok": False, "error": "server error"}), 500
+
     @app.post("/api/cards/<int:card_id>/review")
     def api_review_card(card_id: int):
         """Record a review for a card"""
@@ -549,6 +568,57 @@ def create_card(user_id: int, front: str, back: str) -> int:
         )
         conn.commit()
         return cur.lastrowid
+
+
+def get_card_by_id(user_id: int, card_id: int) -> dict:
+    """Get a specific card by ID for authorized user"""
+    with get_db_connection() as conn:
+        card = conn.execute("""
+            SELECT c.id, c.front, c.back, c.created_at
+            FROM cards c 
+            WHERE c.id = ? AND c.user_id = ?
+        """, (card_id, user_id)).fetchone()
+        
+        if not card:
+            return None
+            
+        # Get latest study session info
+        last_session = conn.execute("""
+            SELECT quality, next_review_date, interval_days, ease_factor
+            FROM study_sessions 
+            WHERE card_id = ? AND user_id = ?
+            ORDER BY id DESC LIMIT 1
+        """, (card_id, user_id)).fetchone()
+        
+        # Get repetition count
+        repetitions = conn.execute("""
+            SELECT COUNT(*) as count
+            FROM study_sessions 
+            WHERE card_id = ? AND user_id = ?
+        """, (card_id, user_id)).fetchone()["count"]
+        
+        result = {
+            "id": card["id"],
+            "front": card["front"],
+            "back": card["back"],
+            "created_at": card["created_at"],
+            "repetitions": repetitions
+        }
+        
+        if last_session:
+            result.update({
+                "quality": last_session["quality"],
+                "next_review_date": last_session["next_review_date"],
+                "interval_days": last_session["interval_days"],
+                "ease_factor": last_session["ease_factor"],
+                "status": "due" if last_session["next_review_date"] <= date.today().isoformat() else "learned"
+            })
+        else:
+            result.update({
+                "status": "new"
+            })
+        
+        return result
 
 
 def get_cards_for_review(user_id: int, limit: int = 10) -> list:

@@ -236,15 +236,28 @@ class SpacedRepetitionScheduler:
         return result['count'] if result else 0
     
     async def _send_reminder(self, user: UserReminder):
-        """Send reminder message via Telegram"""
+        """Send reminder message via Telegram with interactive cards"""
         if not BOT_TOKEN:
             logger.error("BOT_TOKEN not configured")
             return
         
-        # Create reminder message
+        # Get specific cards to study
+        due_cards = self._get_due_cards_for_user(user.user_id, limit=5)
+        
+        if not due_cards:
+            # No specific cards, send general reminder
+            await self._send_general_reminder(user)
+            return
+        
+        # Send individual card reminders
+        for card in due_cards:
+            await self._send_card_reminder(user.user_id, card)
+            await asyncio.sleep(0.5)  # Prevent rate limiting
+    
+    async def _send_general_reminder(self, user: UserReminder):
+        """Send general reminder without specific cards"""
         message = self._create_reminder_message(user)
         
-        # Send via Telegram Bot API
         url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
         
         payload = {
@@ -256,10 +269,32 @@ class SpacedRepetitionScheduler:
         
         async with self.session.post(url, json=payload) as resp:
             if resp.status == 200:
-                logger.debug(f"Reminder sent successfully to user {user.user_id}")
+                logger.debug(f"General reminder sent successfully to user {user.user_id}")
             else:
                 error_text = await resp.text()
-                logger.error(f"Failed to send reminder to user {user.user_id}: {resp.status} - {error_text}")
+                logger.error(f"Failed to send general reminder to user {user.user_id}: {resp.status} - {error_text}")
+    
+    async def _send_card_reminder(self, user_id: int, card: dict):
+        """Send reminder for specific card with interactive button"""
+        message = self._create_card_reminder_message(card)
+        inline_keyboard = self._create_card_keyboard(card)
+        
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        
+        payload = {
+            "chat_id": user_id,
+            "text": message,
+            "parse_mode": "HTML",
+            "disable_notification": False,
+            "reply_markup": inline_keyboard
+        }
+        
+        async with self.session.post(url, json=payload) as resp:
+            if resp.status == 200:
+                logger.debug(f"Card reminder sent successfully to user {user_id}, card {card['id']}")
+            else:
+                error_text = await resp.text()
+                logger.error(f"Failed to send card reminder to user {user_id}: {resp.status} - {error_text}")
     
     def _create_reminder_message(self, user: UserReminder) -> str:
         """Create personalized reminder message"""
@@ -281,6 +316,89 @@ class SpacedRepetitionScheduler:
 🚀 Начните изучение в Mini App"""
         
         return message
+    
+    def _get_due_cards_for_user(self, user_id: int, limit: int = 5) -> List[dict]:
+        """Get specific cards that are due for review"""
+        current_date = date.today().isoformat()
+        
+        try:
+            with sqlite3.connect(DB_PATH) as conn:
+                conn.row_factory = sqlite3.Row
+                
+                # Get due cards with details
+                due_cards = conn.execute("""
+                    SELECT DISTINCT c.id, c.front, c.back, c.created_at,
+                           s.quality, s.next_review_date, s.repetitions
+                    FROM cards c
+                    JOIN study_sessions s ON c.id = s.card_id
+                    WHERE c.user_id = ? AND s.next_review_date <= ?
+                    AND s.id IN (
+                        SELECT MAX(id) FROM study_sessions 
+                        WHERE card_id = c.id GROUP BY card_id
+                    )
+                    ORDER BY s.next_review_date ASC
+                    LIMIT ?
+                """, (user_id, current_date, limit)).fetchall()
+                
+                # Convert to list of dicts
+                cards = []
+                for row in due_cards:
+                    cards.append({
+                        'id': row['id'],
+                        'front': row['front'],
+                        'back': row['back'],
+                        'quality': row['quality'],
+                        'repetitions': row['repetitions'],
+                        'next_review_date': row['next_review_date']
+                    })
+                
+                return cards
+                
+        except Exception as e:
+            logger.error(f"Error getting due cards for user {user_id}: {e}")
+            return []
+    
+    def _create_card_reminder_message(self, card: dict) -> str:
+        """Create message for specific card reminder"""
+        repetitions = card.get('repetitions', 0)
+        if repetitions == 0:
+            status = "✨ Новая карточка"
+        elif repetitions == 1:
+            status = "🔄 Первое повторение"
+        elif repetitions <= 3:
+            status = f"📚 {repetitions}-е повторение"
+        else:
+            status = f"🎯 Повторение #{repetitions}"
+        
+        message = f"""📖 <b>Время повторить карточку!</b>
+
+<b>{status}</b>
+
+<b>Слово:</b> <code>{card['front']}</code>
+<b>Перевод:</b> <i>{card['back']}</i>
+
+💡 <i>Нажмите кнопку ниже, чтобы изучить эту карточку</i>"""
+        
+        return message
+    
+    def _create_card_keyboard(self, card: dict) -> dict:
+        """Create inline keyboard for card interaction"""
+        return {
+            "inline_keyboard": [
+                [
+                    {
+                        "text": "🚀 Изучить карточку",
+                        "callback_data": f"study_card_{card['id']}"
+                    }
+                ],
+                [
+                    {
+                        "text": "📚 Открыть все карточки",
+                        "url": f"{os.getenv('APP_URL', 'http://localhost:8000')}/study.html"
+                    }
+                ]
+            ]
+        }
     
     def _update_last_reminder(self, user_id: int):
         """Update last reminder timestamp for spam protection"""

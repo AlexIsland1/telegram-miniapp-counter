@@ -20,6 +20,43 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 APP_URL = os.getenv("APP_URL", "http://localhost:8000")
 
 
+async def get_card_for_study(user_id: int, card_id: str) -> dict:
+    """Get card details for study via API"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{APP_URL}/api/cards/{card_id}",
+                json={"user_id": user_id},
+                headers={"Content-Type": "application/json"}
+            ) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    if result.get("ok"):
+                        return result.get("card")
+                return None
+    except Exception as e:
+        logging.error(f"Error getting card {card_id} for user {user_id}: {e}")
+        return None
+
+
+async def submit_card_quality(user_id: int, card_id: str, quality: int) -> bool:
+    """Submit card quality rating via API"""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"{APP_URL}/api/cards/{card_id}/review",
+                json={"user_id": user_id, "quality": quality},
+                headers={"Content-Type": "application/json"}
+            ) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    return result.get("ok", False)
+                return False
+    except Exception as e:
+        logging.error(f"Error submitting quality for card {card_id}: {e}")
+        return False
+
+
 async def main():
     # Configure logging to console + file
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -263,6 +300,129 @@ async def main():
         except Exception as e:
             logging.exception("TOGGLE_NOTIFICATIONS error: %s", e)
             await message.answer("❌ Произошла ошибка")
+
+    @dp.callback_query(F.data.startswith("study_card_"))
+    async def on_study_card(callback: types.CallbackQuery):
+        """Handle study card button clicks"""
+        try:
+            await callback.answer()
+            
+            # Extract card ID from callback data
+            card_id = callback.data.split("_")[-1]
+            user_id = callback.from_user.id
+            
+            logging.info("STUDY_CARD callback from user_id=%s card_id=%s", user_id, card_id)
+            
+            # Get card details
+            card_data = await get_card_for_study(user_id, card_id)
+            
+            if not card_data:
+                await callback.message.edit_text("❌ Карточка не найдена или недоступна")
+                return
+            
+            # Create study interface
+            study_message = f"""📖 <b>Изучение карточки</b>
+
+<b>Слово:</b> <code>{card_data['front']}</code>
+
+🤔 <i>Попробуйте вспомнить перевод, затем нажмите "Показать ответ"</i>"""
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="👁‍🗨 Показать ответ", callback_data=f"show_answer_{card_id}")],
+                [InlineKeyboardButton(text="📚 Открыть все карточки", url=f"{APP_URL}/study.html")]
+            ])
+            
+            await callback.message.edit_text(study_message, parse_mode="HTML", reply_markup=keyboard)
+            
+        except Exception as e:
+            logging.exception("STUDY_CARD callback error: %s", e)
+            await callback.message.edit_text("❌ Произошла ошибка при загрузке карточки")
+    
+    @dp.callback_query(F.data.startswith("show_answer_"))
+    async def on_show_answer(callback: types.CallbackQuery):
+        """Show answer and quality buttons"""
+        try:
+            await callback.answer()
+            
+            card_id = callback.data.split("_")[-1]
+            user_id = callback.from_user.id
+            
+            # Get card details
+            card_data = await get_card_for_study(user_id, card_id)
+            
+            if not card_data:
+                await callback.message.edit_text("❌ Карточка не найдена")
+                return
+            
+            answer_message = f"""📖 <b>Карточка с ответом</b>
+
+<b>Слово:</b> <code>{card_data['front']}</code>
+<b>Перевод:</b> <i>{card_data['back']}</i>
+
+❓ <b>Насколько хорошо вы помните эту карточку?</b>"""
+            
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(text="😞 Плохо (1)", callback_data=f"quality_{card_id}_1"),
+                    InlineKeyboardButton(text="🤔 Слабо (2)", callback_data=f"quality_{card_id}_2")
+                ],
+                [
+                    InlineKeyboardButton(text="😐 Нормально (3)", callback_data=f"quality_{card_id}_3"),
+                    InlineKeyboardButton(text="😊 Хорошо (4)", callback_data=f"quality_{card_id}_4")
+                ],
+                [
+                    InlineKeyboardButton(text="🎯 Отлично (5)", callback_data=f"quality_{card_id}_5")
+                ],
+                [
+                    InlineKeyboardButton(text="📚 Все карточки", url=f"{APP_URL}/study.html")
+                ]
+            ])
+            
+            await callback.message.edit_text(answer_message, parse_mode="HTML", reply_markup=keyboard)
+            
+        except Exception as e:
+            logging.exception("SHOW_ANSWER callback error: %s", e)
+            await callback.message.edit_text("❌ Произошла ошибка")
+    
+    @dp.callback_query(F.data.startswith("quality_"))
+    async def on_quality_rating(callback: types.CallbackQuery):
+        """Handle quality rating submission"""
+        try:
+            await callback.answer("✅ Оценка сохранена!")
+            
+            # Parse callback data
+            parts = callback.data.split("_")
+            card_id = parts[1]
+            quality = int(parts[2])
+            user_id = callback.from_user.id
+            
+            logging.info("QUALITY_RATING from user_id=%s card_id=%s quality=%s", user_id, card_id, quality)
+            
+            # Submit quality rating via API
+            success = await submit_card_quality(user_id, card_id, quality)
+            
+            if success:
+                quality_text = ["", "😞 Плохо", "🤔 Слабо", "😐 Нормально", "😊 Хорошо", "🎯 Отлично"][quality]
+                
+                final_message = f"""✅ <b>Карточка изучена!</b>
+
+<b>Ваша оценка:</b> {quality_text}
+
+🎉 <i>Отлично! Карточка добавлена в систему интервального повторения. Увидимся в следующий раз!</i>
+
+📚 Продолжайте изучение в приложении."""
+                
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="📚 Изучать дальше", url=f"{APP_URL}/study.html")]
+                ])
+                
+                await callback.message.edit_text(final_message, parse_mode="HTML", reply_markup=keyboard)
+            else:
+                await callback.message.edit_text("❌ Ошибка при сохранении оценки. Попробуйте позже.")
+            
+        except Exception as e:
+            logging.exception("QUALITY_RATING error: %s", e)
+            await callback.message.edit_text("❌ Произошла ошибка при сохранении оценки")
 
     # Ensure polling works (remove webhook if previously set)
     try:
