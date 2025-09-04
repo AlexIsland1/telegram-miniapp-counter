@@ -1,0 +1,10 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python main.py"
+restartPolicyType = "always"
+restartPolicyMaxRetries = 10
+
+[environments.production.variables]
+PYTHON_VERSION = "3.11"
