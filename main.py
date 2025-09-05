@@ -32,13 +32,33 @@ logger = logging.getLogger(__name__)
 
 
 def run_flask_app():
-    """Run Flask app in separate thread"""
+    """Run Flask app with Gunicorn in separate thread"""
     try:
+        import subprocess
+        port = int(os.environ.get("PORT", 8000))
+        
+        # Use Gunicorn for production
+        cmd = [
+            "gunicorn",
+            "--bind", f"0.0.0.0:{port}",
+            "--workers", "1",
+            "--timeout", "120",
+            "--keep-alive", "5",
+            "--max-requests", "1000",
+            "--preload",
+            "webapp.app:app"
+        ]
+        
+        logger.info(f"Starting Gunicorn server on port {port}")
+        subprocess.run(cmd, check=True)
+        
+    except Exception as e:
+        logger.error(f"Gunicorn server crashed: {e}")
+        # Fallback to Flask dev server
+        logger.info("Falling back to Flask development server")
         app = create_app()
         port = int(os.environ.get("PORT", 8000))
         app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-    except Exception as e:
-        logger.error(f"Flask app crashed: {e}")
 
 
 async def run_scheduler(scheduler):
