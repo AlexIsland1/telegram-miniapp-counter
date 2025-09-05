@@ -14,8 +14,13 @@ from flask import Flask, jsonify, request, send_from_directory
 
 
 BASE_DIR = os.path.dirname(__file__)
+# Ensure database is stored in a persistent location
 DB_PATH = os.path.join(BASE_DIR, "counter.db")
 EXPORTS_DIR = os.path.join(BASE_DIR, "exports")
+
+# Create directories if they don't exist
+os.makedirs(BASE_DIR, exist_ok=True)
+os.makedirs(EXPORTS_DIR, exist_ok=True)
 
 
 def setup_logging(app: Flask) -> None:
@@ -713,7 +718,10 @@ def get_user_stats(user_id: int) -> dict:
 
 
 def extract_user_id_from_request() -> Optional[int]:
-    # Prefer Telegram initData validation if provided
+    """Extract user ID from Telegram initData or dev mode fallback"""
+    logger = logging.getLogger(__name__)
+    
+    # Parse request payload
     content_type = (request.headers.get("Content-Type") or "").lower()
     payload = {}
     if "application/json" in content_type:
@@ -726,25 +734,41 @@ def extract_user_id_from_request() -> Optional[int]:
 
     init_data = request.headers.get("X-Telegram-Init-Data") or payload.get("initData")
     bot_token = os.getenv("BOT_TOKEN")
-    dev_mode = (os.getenv("DEV_MODE", "true").lower() == "true")
+    dev_mode = (os.getenv("DEV_MODE", "false").lower() == "true")
+    
+    logger.info("AUTH: dev_mode=%s, has_initData=%s, has_bot_token=%s", 
+                dev_mode, bool(init_data), bool(bot_token))
 
-    if init_data and bot_token:
+    # Production: Validate Telegram initData
+    if init_data and bot_token and not dev_mode:
         ok, user_id = validate_and_get_user_id(init_data, bot_token)
         if ok and user_id is not None:
-            logging.getLogger(__name__).info("Auth via initData user_id=%s", user_id)
+            logger.info("AUTH: Success via initData user_id=%s", user_id)
             return user_id
+        else:
+            logger.warning("AUTH: initData validation failed")
 
-    # Dev fallback: allow ?user_id=... or body.user_id, with default fallback
+    # Dev mode: allow manual user_id
     if dev_mode:
         uid = request.args.get("user_id") or payload.get("user_id")
         try:
             val = int(uid) if uid is not None else 234195742  # Default dev user ID
-            logging.getLogger(__name__).info("Auth via DEV user_id=%s", val)
+            logger.info("AUTH: DEV mode user_id=%s", val)
             return val
         except (TypeError, ValueError):
-            logging.getLogger(__name__).warning("Invalid DEV user_id=%r, using default", uid)
+            logger.warning("AUTH: Invalid DEV user_id=%r, using default", uid)
             return 234195742
 
+    # Production fallback: try to extract user_id from payload for API compatibility
+    if not dev_mode and payload.get("user_id"):
+        try:
+            user_id = int(payload.get("user_id"))
+            logger.warning("AUTH: Using user_id from payload (no initData validation): %s", user_id)
+            return user_id
+        except (TypeError, ValueError):
+            pass
+
+    logger.error("AUTH: Failed - no valid authentication method")
     return None
 
 

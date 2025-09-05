@@ -22,7 +22,7 @@ load_dotenv()
 # Configuration
 DB_PATH = os.path.join(os.path.dirname(__file__), "webapp", "counter.db")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHECK_INTERVAL = 300  # Check every 5 minutes
+CHECK_INTERVAL = int(os.getenv("SCHEDULER_INTERVAL", "300"))  # Check every 5 minutes (configurable)
 LOG_FILE = os.path.join(os.path.dirname(__file__), "logs", "scheduler.log")
 
 # Ensure logs directory exists
@@ -94,10 +94,11 @@ class SpacedRepetitionScheduler:
     
     async def _check_and_send_reminders(self):
         """Check for users needing reminders and send them"""
+        logger.info("Checking for users needing reminders...")
         users_to_remind = self._get_users_needing_reminders()
         
         if not users_to_remind:
-            logger.debug("No users need reminders at this time")
+            logger.info("No users need reminders at this time")
             return
         
         logger.info(f"Found {len(users_to_remind)} users needing reminders")
@@ -119,6 +120,12 @@ class SpacedRepetitionScheduler:
             with sqlite3.connect(DB_PATH) as conn:
                 conn.row_factory = sqlite3.Row
                 
+                # First, check if database exists and has users
+                total_users = conn.execute("SELECT COUNT(*) as count FROM users").fetchone()['count']
+                total_cards = conn.execute("SELECT COUNT(*) as count FROM cards").fetchone()['count']
+                
+                logger.info(f"DATABASE CHECK: {total_users} users, {total_cards} cards in database")
+                
                 # Get users with their settings and card stats
                 users = conn.execute("""
                     SELECT DISTINCT u.user_id,
@@ -131,6 +138,8 @@ class SpacedRepetitionScheduler:
                     WHERE COALESCE(us.notifications_enabled, 1) = 1
                     AND c.id IS NOT NULL  -- Only users with cards
                 """).fetchall()
+                
+                logger.info(f"Found {len(users)} users with cards and notifications enabled")
                 
                 users_to_remind = []
                 
