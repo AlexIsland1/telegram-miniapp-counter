@@ -472,11 +472,38 @@ def get_user_dashboard_stats(user_id: int) -> dict:
             )
         """, (user_id, today)).fetchone()["count"]
         
-        # New cards
+        # New cards (never studied)
         new_cards = conn.execute("""
             SELECT COUNT(*) as count FROM cards c 
             LEFT JOIN study_sessions s ON c.id = s.card_id 
             WHERE c.user_id = ? AND s.card_id IS NULL
+        """, (user_id,)).fetchone()["count"]
+        
+        # Learning cards (studied but not mastered, interval < 21 days)
+        learning_cards = conn.execute("""
+            SELECT COUNT(DISTINCT c.id) as count
+            FROM cards c
+            JOIN study_sessions s ON c.id = s.card_id
+            WHERE c.user_id = ? 
+            AND s.interval_days < 21
+            AND s.next_review_date > ?
+            AND s.id IN (
+                SELECT MAX(id) FROM study_sessions 
+                WHERE card_id = c.id GROUP BY card_id
+            )
+        """, (user_id, today)).fetchone()["count"]
+        
+        # Mature cards (interval >= 21 days)
+        mature_cards = conn.execute("""
+            SELECT COUNT(DISTINCT c.id) as count
+            FROM cards c
+            JOIN study_sessions s ON c.id = s.card_id
+            WHERE c.user_id = ? 
+            AND s.interval_days >= 21
+            AND s.id IN (
+                SELECT MAX(id) FROM study_sessions 
+                WHERE card_id = c.id GROUP BY card_id
+            )
         """, (user_id,)).fetchone()["count"]
         
         # Total study sessions
@@ -527,6 +554,8 @@ def get_user_dashboard_stats(user_id: int) -> dict:
             "total_cards": total_cards,
             "due_today": due_cards,
             "new_cards": new_cards,
+            "learning_cards": learning_cards,
+            "mature_cards": mature_cards,
             "total_sessions": total_sessions,
             "current_streak": current_streak,
             "mastered_cards": mastered_cards,

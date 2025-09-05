@@ -22,7 +22,7 @@ load_dotenv()
 # Configuration
 DB_PATH = os.path.join(os.path.dirname(__file__), "webapp", "counter.db")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHECK_INTERVAL = int(os.getenv("SCHEDULER_INTERVAL", "300"))  # Check every 5 minutes (configurable)
+CHECK_INTERVAL = int(os.getenv("SCHEDULER_INTERVAL", "3600"))  # Check every hour by default (configurable)
 LOG_FILE = os.path.join(os.path.dirname(__file__), "logs", "scheduler.log")
 
 # Ensure logs directory exists
@@ -112,56 +112,67 @@ class SpacedRepetitionScheduler:
                 logger.error(f"Failed to send reminder to user {user.user_id}: {e}")
     
     def _get_users_needing_reminders(self) -> List[UserReminder]:
-        """Get list of users who need reminders"""
-        current_time = datetime.now()
+        """Get users who have cards due for review TODAY (Spaced Repetition logic)"""
         current_date = date.today().isoformat()
         
         try:
             with sqlite3.connect(DB_PATH) as conn:
                 conn.row_factory = sqlite3.Row
                 
-                # First, check if database exists and has users
+                # Database diagnostics
                 total_users = conn.execute("SELECT COUNT(*) as count FROM users").fetchone()['count']
                 total_cards = conn.execute("SELECT COUNT(*) as count FROM cards").fetchone()['count']
+                total_sessions = conn.execute("SELECT COUNT(*) as count FROM study_sessions").fetchone()['count']
                 
-                logger.info(f"DATABASE CHECK: {total_users} users, {total_cards} cards in database")
+                logger.info(f"DATABASE: {total_users} users, {total_cards} cards, {total_sessions} sessions")
                 
-                # Get users with their settings and card stats
+                # Get users who have cards due TODAY or new cards to study
                 users = conn.execute("""
                     SELECT DISTINCT u.user_id,
-                           COALESCE(us.notifications_enabled, 1) as notifications_enabled,
-                           COALESCE(us.study_reminder_time, '09:00') as reminder_time,
-                           COALESCE(us.timezone, 'UTC') as timezone
+                           COALESCE(us.notifications_enabled, 1) as notifications_enabled
                     FROM users u
                     LEFT JOIN user_settings us ON u.user_id = us.user_id
-                    LEFT JOIN cards c ON u.user_id = c.user_id
                     WHERE COALESCE(us.notifications_enabled, 1) = 1
-                    AND c.id IS NOT NULL  -- Only users with cards
-                """).fetchall()
+                    AND (
+                        -- User has cards due today
+                        EXISTS (
+                            SELECT 1 FROM cards c
+                            JOIN study_sessions s ON c.id = s.card_id
+                            WHERE c.user_id = u.user_id 
+                            AND s.next_review_date <= ?
+                            AND s.id = (SELECT MAX(id) FROM study_sessions WHERE card_id = c.id)
+                        )
+                        OR
+                        -- User has new cards (never studied)
+                        EXISTS (
+                            SELECT 1 FROM cards c
+                            LEFT JOIN study_sessions s ON c.id = s.card_id
+                            WHERE c.user_id = u.user_id AND s.card_id IS NULL
+                        )
+                    )
+                """, (current_date,)).fetchall()
                 
-                logger.info(f"Found {len(users)} users with cards and notifications enabled")
+                logger.info(f"Found {len(users)} users with cards due today or new cards")
                 
                 users_to_remind = []
                 
                 for user_row in users:
                     user_id = user_row['user_id']
-                    reminder_time_str = user_row['reminder_time']
                     
                     # Skip if notifications disabled
                     if not user_row['notifications_enabled']:
                         continue
                     
-                    # Check if it's time for this user's reminder
-                    if not self._is_reminder_time(reminder_time_str, current_time):
-                        continue
-                    
-                    # Check if already reminded today
+                    # Check if already reminded today (avoid spam)
                     if self._was_reminded_today(user_id):
+                        logger.info(f"User {user_id} already reminded today, skipping")
                         continue
                     
                     # Get due and new card counts
                     due_count = self._get_due_cards_count(conn, user_id, current_date)
                     new_count = self._get_new_cards_count(conn, user_id)
+                    
+                    logger.info(f"User {user_id}: {due_count} due cards, {new_count} new cards")
                     
                     # Only remind if there are cards to study
                     if due_count > 0 or new_count > 0:
@@ -170,7 +181,7 @@ class SpacedRepetitionScheduler:
                             due_count=due_count,
                             new_count=new_count,
                             last_reminder=None,
-                            reminder_time=reminder_time_str,
+                            reminder_time="any_time",  # Spaced repetition doesn't depend on time
                             notifications_enabled=True
                         ))
                 
@@ -180,25 +191,7 @@ class SpacedRepetitionScheduler:
             logger.error(f"Error getting users for reminders: {e}")
             return []
     
-    def _is_reminder_time(self, reminder_time_str: str, current_time: datetime) -> bool:
-        """Check if current time matches user's reminder time"""
-        try:
-            # Parse reminder time (HH:MM format)
-            reminder_time = datetime.strptime(reminder_time_str, '%H:%M').time()
-            current_time_only = current_time.time()
-            
-            # Check if current time is within 5 minutes of reminder time
-            reminder_datetime = datetime.combine(date.today(), reminder_time)
-            current_datetime = datetime.combine(date.today(), current_time_only)
-            
-            time_diff = abs((current_datetime - reminder_datetime).total_seconds())
-            
-            # Remind if within CHECK_INTERVAL seconds of reminder time
-            return time_diff <= CHECK_INTERVAL
-            
-        except ValueError:
-            logger.warning(f"Invalid reminder time format: {reminder_time_str}")
-            return False
+    # NOTE: Time-based reminders removed - Spaced Repetition works by card due dates, not time
     
     def _was_reminded_today(self, user_id: int) -> bool:
         """Check if user was already reminded today"""
